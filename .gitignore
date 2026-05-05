@@ -1,0 +1,15 @@
+/serverGitUpdater
+/sgu
+/dist/
+*.exe
+
+# runtime artifacts (do not commit secrets)
+config.json
+config.local.json
+updates.log
+*.log
+
+# editor
+.idea/
+.vscode/
+.DS_Store

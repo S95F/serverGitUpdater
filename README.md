@@ -1,0 +1,257 @@
+# serverGitUpdater
+
+A small Go service that runs on your VPS and pulls the latest code from a Git
+remote into a working copy on disk — either on demand from a web UI, or on a
+schedule. Useful for keeping a deployed app in sync with `main` without
+hand-rolling another CI runner.
+
+Single static binary, embedded frontend, JSON config, no database.
+
+## Features
+
+- Web UI to:
+  - View current branch, HEAD commit, working-tree state, and how far behind
+    the remote you are.
+  - Trigger a manual update (`fetch` + `reset --hard origin/<branch>` + an
+    optional post-update hook).
+  - Toggle scheduled auto-updates and change the interval.
+  - Edit the repo path, branch, remote, and post-update command.
+  - Change your admin password.
+  - Browse the recent update history with stdout/stderr from each run.
+- Authenticated, session-based login (bcrypt password, signed cookie).
+- CSRF protection on every state-changing request.
+- Login rate limiting per client IP.
+- Strict security headers and a tight Content-Security-Policy.
+- Optional built-in TLS, or run behind nginx/Caddy.
+- Single binary — frontend assets are compiled in via `embed`.
+
+## Requirements
+
+- Go 1.22+ to build.
+- `git` available on `PATH` on the host where the binary runs.
+- A working copy of your target repo already cloned somewhere on disk
+  (the service does not perform the initial clone).
+- For private repos, a deploy key or credential helper that the user running
+  the binary can read (see [Authenticating with the Git remote](#authenticating-with-the-git-remote)).
+
+## Install
+
+```sh
+git clone https://github.com/s95f/servergitupdater.git
+cd servergitupdater
+go mod tidy
+go build -o serverGitUpdater .
+```
+
+## First run
+
+1. Create the initial admin user. This writes `config.json` in the current
+   directory if it does not exist yet, then sets the username and password
+   hash:
+
+   ```sh
+   ./serverGitUpdater --init-user admin
+   # prompts for password (min 8 chars)
+   ```
+
+   Or non-interactively:
+
+   ```sh
+   ./serverGitUpdater --init-user admin --init-pass 'your-strong-password'
+   ```
+
+2. Edit `config.json` to point at your repository:
+
+   ```json
+   {
+     "listen_addr": ":8080",
+     "repo_path": "/srv/myapp",
+     "branch": "main",
+     "remote": "origin",
+     "post_update_command": "/srv/myapp/deploy.sh",
+     "auto_update_enabled": false,
+     "auto_update_minutes": 15,
+     "cookie_secure": true
+   }
+   ```
+
+   See [`config.example.json`](./config.example.json) for the full schema.
+
+3. Start the server:
+
+   ```sh
+   ./serverGitUpdater --config config.json
+   ```
+
+4. Open `http://<your-server>:8080/` and sign in. You can change everything
+   else from the UI.
+
+## Configuration
+
+`config.json` is the source of truth. The app rewrites it (atomically) when
+you save settings or change your password from the UI, so don't put comments
+in it.
+
+| Key | Default | Notes |
+|-----|---------|-------|
+| `listen_addr` | `:8080` | Address to bind. |
+| `tls_cert_file`, `tls_key_file` | empty | If both set, the app serves HTTPS directly. |
+| `session_secret` | auto-generated | HMAC key for session cookies. Rotating it logs everyone out. |
+| `session_ttl_hours` | `12` | Session lifetime. |
+| `cookie_secure` | `false` | Set to `true` when serving over HTTPS (directly or behind a TLS proxy). |
+| `username` / `password_hash` | — | Set via `--init-user` or the in-app password change. |
+| `repo_path` | — | Absolute path to the working copy on disk. |
+| `branch` | `main` | Branch to track. |
+| `remote` | `origin` | Remote name. |
+| `post_update_command` | empty | Optional command to run after a successful update (e.g. `systemctl restart myapp`, `./deploy.sh`). |
+| `post_update_args` | `[]` | Argv for the hook. |
+| `git_env` | `[]` | Extra `KEY=VALUE` env vars for `git` and the hook (e.g. `GIT_SSH_COMMAND=...`). |
+| `auto_update_enabled` | `false` | Master switch for the scheduler. |
+| `auto_update_minutes` | `15` | Minimum 1. Changes take effect on the next tick. |
+| `log_path` | `updates.log` | JSONL file with one entry per run. |
+| `max_log_rows` | `500` | How many rows the UI loads. |
+
+## What an update actually does
+
+When you press **Update now** or the scheduler fires, the service runs the
+following inside `repo_path`, in order:
+
+1. `git fetch --prune <remote>`
+2. `git checkout <branch>`
+3. `git reset --hard <remote>/<branch>`
+4. The configured `post_update_command` (if any).
+
+This is **destructive to local changes** in the working copy by design — the
+goal is to make the deployed tree exactly match the remote branch. Don't
+point this at a working copy you also edit by hand.
+
+Each run is appended to `log_path` as a single JSON line and shown in the
+**Update history** panel.
+
+## Running as a service
+
+A minimal systemd unit (adjust paths and `User=`):
+
+```ini
+# /etc/systemd/system/servergitupdater.service
+[Unit]
+Description=serverGitUpdater
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/srv/servergitupdater
+ExecStart=/srv/servergitupdater/serverGitUpdater --config /srv/servergitupdater/config.json
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then:
+
+```sh
+sudo systemctl daemon-reload
+sudo systemctl enable --now servergitupdater
+```
+
+## Putting it behind nginx / Caddy
+
+The service speaks plain HTTP by default. If you terminate TLS at a reverse
+proxy, set `"cookie_secure": true` so the browser only sends the session
+cookie over HTTPS, and forward the real client IP for accurate rate limiting:
+
+**Caddy:**
+
+```caddyfile
+updater.example.com {
+    reverse_proxy 127.0.0.1:8080 {
+        header_up X-Real-IP {remote_host}
+    }
+}
+```
+
+**nginx:**
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+## Authenticating with the Git remote
+
+The service runs `git` as whatever user owns the process. For private repos
+you have a few options:
+
+- **Deploy key over SSH.** Add the public key as a read-only deploy key on
+  the repo, and point `git_env` at it:
+
+  ```json
+  "git_env": [
+    "GIT_SSH_COMMAND=ssh -i /home/deploy/.ssh/id_ed25519 -o StrictHostKeyChecking=yes"
+  ]
+  ```
+
+- **HTTPS with a credential helper.** Configure `git config --global
+  credential.helper store` for the service user and prime it once.
+
+- **HTTPS with a token in the remote URL.** Set the remote URL on disk to
+  `https://x-access-token:<TOKEN>@github.com/owner/repo.git`. Keep in mind
+  the token is then visible in `.git/config` on the host.
+
+The app never sees or stores Git credentials.
+
+## Security notes
+
+- Run the binary as a **dedicated, unprivileged user** that owns
+  `repo_path`. Don't run it as root.
+- Always serve it over HTTPS in production (either built-in TLS or a TLS
+  proxy) and set `cookie_secure: true`.
+- `config.json` contains your bcrypt hash and session secret; it is written
+  with mode `0600`. Make sure the parent directory is not world-readable.
+- Login attempts are rate-limited (8 failures per 15 minutes per IP). If
+  you're behind a proxy, make sure `X-Real-IP` or `X-Forwarded-For` is set
+  so the limiter sees real client IPs.
+- The post-update command runs as the same user as the service. Treat the
+  admin login as equivalent to shell access.
+
+## CLI flags
+
+```
+--config string     path to config file (default "config.json")
+--addr string       override listen address (e.g. ":8080")
+--init-user string  create or reset the admin user with this username and exit
+--init-pass string  password for --init-user (read from stdin if empty)
+```
+
+## Project layout
+
+```
+.
+├── main.go                  entrypoint, flag parsing, lifecycle
+├── internal/
+│   ├── auth/                bcrypt, signed-cookie sessions, CSRF, rate limit
+│   ├── config/              JSON config load/save with atomic replace
+│   ├── git/                 update runner + scheduler + JSONL log
+│   └── server/              HTTP routes, middleware, handlers
+└── web/
+    ├── embed.go             go:embed of static/
+    └── static/              login + dashboard (vanilla HTML/CSS/JS)
+```
+
+## License
+
+MIT.

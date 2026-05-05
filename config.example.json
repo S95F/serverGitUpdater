@@ -1,0 +1,26 @@
+{
+  "listen_addr": ":8080",
+  "tls_cert_file": "",
+  "tls_key_file": "",
+  "session_secret": "REPLACE_ME_WITH_RANDOM_HEX_OR_LET_APP_GENERATE",
+  "session_ttl_hours": 12,
+  "cookie_secure": true,
+
+  "username": "admin",
+  "password_hash": "set via:  ./serverGitUpdater --init-user admin",
+
+  "repo_path": "/srv/myapp",
+  "branch": "main",
+  "remote": "origin",
+  "post_update_command": "/srv/myapp/deploy.sh",
+  "post_update_args": [],
+  "git_env": [
+    "GIT_SSH_COMMAND=ssh -i /home/deploy/.ssh/id_ed25519 -o StrictHostKeyChecking=yes"
+  ],
+
+  "auto_update_enabled": false,
+  "auto_update_minutes": 15,
+
+  "log_path": "/var/log/servergitupdater/updates.log",
+  "max_log_rows": 500
+}
