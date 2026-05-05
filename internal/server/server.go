@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/s95f/servergitupdater/internal/auth"
+	"github.com/s95f/servergitupdater/internal/build"
 	"github.com/s95f/servergitupdater/internal/config"
 	"github.com/s95f/servergitupdater/internal/git"
+	"github.com/s95f/servergitupdater/internal/service"
 	"github.com/s95f/servergitupdater/web"
 )
 
@@ -54,6 +56,15 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/config", s.requireAuthCSRF(s.handleSetConfig))
 	mux.HandleFunc("POST /api/password", s.requireAuthCSRF(s.handleChangePassword))
 	mux.HandleFunc("GET /api/logs", s.requireAuth(s.handleLogs))
+
+	mux.HandleFunc("GET /api/build/detect", s.requireAuth(s.handleBuildDetect))
+	mux.HandleFunc("POST /api/build/run", s.requireAuthCSRF(s.handleBuildRun))
+
+	mux.HandleFunc("GET /api/service/status", s.requireAuth(s.handleServiceStatus))
+	mux.HandleFunc("GET /api/service/preview", s.requireAuth(s.handleServicePreview))
+	mux.HandleFunc("POST /api/service/install", s.requireAuthCSRF(s.handleServiceInstall))
+	mux.HandleFunc("POST /api/service/uninstall", s.requireAuthCSRF(s.handleServiceUninstall))
+	mux.HandleFunc("POST /api/service/restart", s.requireAuthCSRF(s.handleServiceRestart))
 
 	return s.securityHeaders(mux)
 }
@@ -261,18 +272,46 @@ type configPayload struct {
 	PostUpdateArgs    []string `json:"post_update_args"`
 	AutoUpdateEnabled bool     `json:"auto_update_enabled"`
 	AutoUpdateMinutes int      `json:"auto_update_minutes"`
+
+	AutoBuildEnabled bool     `json:"auto_build_enabled"`
+	BuildCommand     string   `json:"build_command"`
+	BuildArgs        []string `json:"build_args"`
+
+	ServiceManageEnabled bool     `json:"service_manage_enabled"`
+	ServiceName          string   `json:"service_name"`
+	ServiceScope         string   `json:"service_scope"`
+	ServiceDescription   string   `json:"service_description"`
+	ServiceExecStart     string   `json:"service_exec_start"`
+	ServiceExecArgs      []string `json:"service_exec_args"`
+	ServiceWorkingDir    string   `json:"service_working_dir"`
+	ServiceUser          string   `json:"service_user"`
+	ServiceEnv           []string `json:"service_env"`
+	ServiceRestart       string   `json:"service_restart"`
 }
 
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	snap := s.cfg.Snapshot()
 	writeJSON(w, http.StatusOK, configPayload{
-		RepoPath:          snap.RepoPath,
-		Branch:            snap.Branch,
-		Remote:            snap.Remote,
-		PostUpdateCommand: snap.PostUpdateCommand,
-		PostUpdateArgs:    snap.PostUpdateArgs,
-		AutoUpdateEnabled: snap.AutoUpdateEnabled,
-		AutoUpdateMinutes: snap.AutoUpdateMinutes,
+		RepoPath:             snap.RepoPath,
+		Branch:               snap.Branch,
+		Remote:               snap.Remote,
+		PostUpdateCommand:    snap.PostUpdateCommand,
+		PostUpdateArgs:       snap.PostUpdateArgs,
+		AutoUpdateEnabled:    snap.AutoUpdateEnabled,
+		AutoUpdateMinutes:    snap.AutoUpdateMinutes,
+		AutoBuildEnabled:     snap.AutoBuildEnabled,
+		BuildCommand:         snap.BuildCommand,
+		BuildArgs:            snap.BuildArgs,
+		ServiceManageEnabled: snap.ServiceManageEnabled,
+		ServiceName:          snap.ServiceName,
+		ServiceScope:         snap.ServiceScope,
+		ServiceDescription:   snap.ServiceDescription,
+		ServiceExecStart:     snap.ServiceExecStart,
+		ServiceExecArgs:      snap.ServiceExecArgs,
+		ServiceWorkingDir:    snap.ServiceWorkingDir,
+		ServiceUser:          snap.ServiceUser,
+		ServiceEnv:           snap.ServiceEnv,
+		ServiceRestart:       snap.ServiceRestart,
 	})
 }
 
@@ -295,6 +334,19 @@ func (s *Server) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 		p.AutoUpdateMinutes = 15
 	}
 
+	scope := strings.TrimSpace(p.ServiceScope)
+	if scope == "" {
+		scope = "system"
+	}
+	if scope != "system" && scope != "user" {
+		writeJSONError(w, http.StatusBadRequest, "service_scope must be 'system' or 'user'")
+		return
+	}
+	restart := strings.TrimSpace(p.ServiceRestart)
+	if restart == "" {
+		restart = "on-failure"
+	}
+
 	if err := s.cfg.Update(s.configPath, func(c *config.Snapshot) {
 		c.RepoPath = p.RepoPath
 		c.Branch = p.Branch
@@ -303,11 +355,177 @@ func (s *Server) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 		c.PostUpdateArgs = p.PostUpdateArgs
 		c.AutoUpdateEnabled = p.AutoUpdateEnabled
 		c.AutoUpdateMinutes = p.AutoUpdateMinutes
+		c.AutoBuildEnabled = p.AutoBuildEnabled
+		c.BuildCommand = strings.TrimSpace(p.BuildCommand)
+		c.BuildArgs = p.BuildArgs
+		c.ServiceManageEnabled = p.ServiceManageEnabled
+		c.ServiceName = strings.TrimSpace(p.ServiceName)
+		c.ServiceScope = scope
+		c.ServiceDescription = p.ServiceDescription
+		c.ServiceExecStart = strings.TrimSpace(p.ServiceExecStart)
+		c.ServiceExecArgs = p.ServiceExecArgs
+		c.ServiceWorkingDir = strings.TrimSpace(p.ServiceWorkingDir)
+		c.ServiceUser = strings.TrimSpace(p.ServiceUser)
+		c.ServiceEnv = p.ServiceEnv
+		c.ServiceRestart = restart
 	}); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "save failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// ---------- build endpoints ----------
+
+func (s *Server) handleBuildDetect(w http.ResponseWriter, r *http.Request) {
+	snap := s.cfg.Snapshot()
+	d := build.Detect(snap.RepoPath)
+	writeJSON(w, http.StatusOK, d)
+}
+
+func (s *Server) handleBuildRun(w http.ResponseWriter, r *http.Request) {
+	snap := s.cfg.Snapshot()
+	out, err := build.Run(r.Context(), snap.RepoPath, snap.BuildCommand, snap.BuildArgs, snap.GitEnv, snap.AutoBuildEnabled)
+	resp := map[string]any{"ok": err == nil, "output": out}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
+	status := http.StatusOK
+	if err != nil {
+		status = http.StatusInternalServerError
+	}
+	writeJSON(w, status, resp)
+}
+
+// ---------- service endpoints ----------
+
+func (s *Server) buildSpec(snap config.Snapshot) (service.Spec, error) {
+	scope := service.Scope(snap.ServiceScope)
+	if scope == "" {
+		scope = service.ScopeSystem
+	}
+	exec := snap.ServiceExecStart
+	if exec == "" {
+		// fall back to detected build output
+		d := build.Detect(snap.RepoPath)
+		if d.SuggestedOutput != "" {
+			exec = d.SuggestedOutput
+		}
+	}
+	wd := snap.ServiceWorkingDir
+	if wd == "" {
+		wd = snap.RepoPath
+	}
+	desc := snap.ServiceDescription
+	if desc == "" && snap.ServiceName != "" {
+		desc = "serverGitUpdater-managed: " + snap.ServiceName
+	}
+	return service.Spec{
+		Name:        snap.ServiceName,
+		Scope:       scope,
+		Description: desc,
+		ExecStart:   exec,
+		ExecArgs:    snap.ServiceExecArgs,
+		WorkingDir:  wd,
+		User:        snap.ServiceUser,
+		Env:         snap.ServiceEnv,
+		Restart:     snap.ServiceRestart,
+	}, nil
+}
+
+func (s *Server) handleServiceStatus(w http.ResponseWriter, r *http.Request) {
+	snap := s.cfg.Snapshot()
+	if snap.ServiceName == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"configured": false})
+		return
+	}
+	scope := service.Scope(snap.ServiceScope)
+	if scope == "" {
+		scope = service.ScopeSystem
+	}
+	st := service.ReadStatus(r.Context(), scope, snap.ServiceName)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"configured": true,
+		"status":     st,
+	})
+}
+
+func (s *Server) handleServicePreview(w http.ResponseWriter, r *http.Request) {
+	snap := s.cfg.Snapshot()
+	spec, _ := s.buildSpec(snap)
+	content, err := service.Render(spec)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	path, _ := service.UnitPath(spec.Scope, spec.Name)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"unit_path": path,
+		"unit":      content,
+	})
+}
+
+func (s *Server) handleServiceInstall(w http.ResponseWriter, r *http.Request) {
+	snap := s.cfg.Snapshot()
+	spec, err := s.buildSpec(snap)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	out, err := service.Install(r.Context(), spec)
+	resp := map[string]any{"ok": err == nil, "output": out}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
+	status := http.StatusOK
+	if err != nil {
+		status = http.StatusInternalServerError
+	}
+	writeJSON(w, status, resp)
+}
+
+func (s *Server) handleServiceUninstall(w http.ResponseWriter, r *http.Request) {
+	snap := s.cfg.Snapshot()
+	if snap.ServiceName == "" {
+		writeJSONError(w, http.StatusBadRequest, "service_name not set")
+		return
+	}
+	scope := service.Scope(snap.ServiceScope)
+	if scope == "" {
+		scope = service.ScopeSystem
+	}
+	out, err := service.Uninstall(r.Context(), scope, snap.ServiceName)
+	resp := map[string]any{"ok": err == nil, "output": out}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
+	status := http.StatusOK
+	if err != nil {
+		status = http.StatusInternalServerError
+	}
+	writeJSON(w, status, resp)
+}
+
+func (s *Server) handleServiceRestart(w http.ResponseWriter, r *http.Request) {
+	snap := s.cfg.Snapshot()
+	if snap.ServiceName == "" {
+		writeJSONError(w, http.StatusBadRequest, "service_name not set")
+		return
+	}
+	scope := service.Scope(snap.ServiceScope)
+	if scope == "" {
+		scope = service.ScopeSystem
+	}
+	out, err := service.Restart(r.Context(), scope, snap.ServiceName)
+	resp := map[string]any{"ok": err == nil, "output": out}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
+	status := http.StatusOK
+	if err != nil {
+		status = http.StatusInternalServerError
+	}
+	writeJSON(w, status, resp)
 }
 
 type passwordReq struct {

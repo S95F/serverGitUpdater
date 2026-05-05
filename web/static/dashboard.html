@@ -65,6 +65,87 @@
             <input type="number" name="auto_update_minutes" min="1" value="15" required>
           </label>
         </div>
+
+        <fieldset>
+          <legend>Build</legend>
+          <p class="muted small">
+            <span id="detect-summary">Detection: —</span>
+            <button type="button" id="detect-btn" class="ghost small">Re-detect</button>
+          </p>
+          <label class="checkbox">
+            <input type="checkbox" name="auto_build_enabled">
+            <span>Auto-build after every successful pull (uses detected toolchain)</span>
+          </label>
+          <label>Build command (override; leave blank to use detected default)
+            <input type="text" name="build_command" placeholder="e.g. go">
+          </label>
+          <label>Build args (one per line)
+            <textarea name="build_args" rows="3" placeholder="build&#10;-o&#10;./bin/myapp&#10;./..."></textarea>
+          </label>
+          <div class="row">
+            <button type="button" id="build-now" class="ghost">Build now</button>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Managed systemd service</legend>
+          <label class="checkbox">
+            <input type="checkbox" name="service_manage_enabled">
+            <span>Restart this service after every successful update</span>
+          </label>
+          <div class="two-col">
+            <label>Service name
+              <input type="text" name="service_name" placeholder="myapp" pattern="[A-Za-z0-9._@\-]+">
+            </label>
+            <label>Scope
+              <select name="service_scope">
+                <option value="system">system (writes /etc/systemd/system, needs root)</option>
+                <option value="user">user (writes ~/.config/systemd/user)</option>
+              </select>
+            </label>
+          </div>
+          <label>Description
+            <input type="text" name="service_description" placeholder="My app deployed via serverGitUpdater">
+          </label>
+          <label>ExecStart (path to the binary; leave blank to use the detected build output)
+            <input type="text" name="service_exec_start" placeholder="/srv/myapp/myapp">
+          </label>
+          <label>ExecStart args (one per line)
+            <textarea name="service_exec_args" rows="2" placeholder="--config&#10;/etc/myapp/config.yaml"></textarea>
+          </label>
+          <div class="two-col">
+            <label>Working directory (defaults to repo path)
+              <input type="text" name="service_working_dir" placeholder="/srv/myapp">
+            </label>
+            <label>Run as user (system scope only)
+              <input type="text" name="service_user" placeholder="deploy">
+            </label>
+          </div>
+          <div class="two-col">
+            <label>Environment (KEY=VALUE per line)
+              <textarea name="service_env" rows="2" placeholder="PORT=8081&#10;LOG_LEVEL=info"></textarea>
+            </label>
+            <label>Restart policy
+              <select name="service_restart">
+                <option value="on-failure">on-failure</option>
+                <option value="always">always</option>
+                <option value="no">no</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <button type="button" id="svc-install" class="primary">Install &amp; start</button>
+            <button type="button" id="svc-restart" class="ghost">Restart</button>
+            <button type="button" id="svc-uninstall" class="ghost danger">Uninstall</button>
+            <button type="button" id="svc-preview" class="ghost">Preview unit</button>
+          </div>
+          <p id="svc-summary" class="muted small">Status: —</p>
+          <details>
+            <summary>Last service action output</summary>
+            <pre id="svc-output">—</pre>
+          </details>
+        </fieldset>
+
         <button type="submit" class="primary">Save settings</button>
         <p id="config-status" class="muted"></p>
       </form>

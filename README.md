@@ -13,9 +13,13 @@ Single static binary, embedded frontend, JSON config, no database.
   - View current branch, HEAD commit, working-tree state, and how far behind
     the remote you are.
   - Trigger a manual update (`fetch` + `reset --hard origin/<branch>` + an
-    optional post-update hook).
+    optional build + post-update hook + service restart).
   - Toggle scheduled auto-updates and change the interval.
   - Edit the repo path, branch, remote, and post-update command.
+  - **Auto-detect the project's toolchain (Go, Cargo, Make, npm) and build
+    the binary after every pull**, with an optional manual override.
+  - **Generate, install, restart and uninstall a systemd unit** for the
+    deployed binary — system-wide or as a user unit.
   - Change your admin password.
   - Browse the recent update history with stdout/stderr from each run.
 - Authenticated, session-based login (bcrypt password, signed cookie).
@@ -108,18 +112,36 @@ in it.
 | `git_env` | `[]` | Extra `KEY=VALUE` env vars for `git` and the hook (e.g. `GIT_SSH_COMMAND=...`). |
 | `auto_update_enabled` | `false` | Master switch for the scheduler. |
 | `auto_update_minutes` | `15` | Minimum 1. Changes take effect on the next tick. |
+| `auto_build_enabled` | `false` | Run a build step after every successful pull. |
+| `build_command` | empty | Override the auto-detected build tool (e.g. `go`, `cargo`). |
+| `build_args` | `[]` | Argv for `build_command`. |
+| `service_manage_enabled` | `false` | Restart `service_name` after every successful update. |
+| `service_name` | empty | systemd unit name (without `.service`). |
+| `service_scope` | `system` | `system` or `user`. |
+| `service_description` | empty | `Description=` line. |
+| `service_exec_start` | empty | Path to the binary; falls back to detected build output. |
+| `service_exec_args` | `[]` | Argv appended to `ExecStart=`. |
+| `service_working_dir` | empty | `WorkingDirectory=`; defaults to `repo_path`. |
+| `service_user` | empty | `User=` (system scope only). |
+| `service_env` | `[]` | One `Environment=KEY=VALUE` per entry. |
+| `service_restart` | `on-failure` | `on-failure`, `always`, or `no`. |
 | `log_path` | `updates.log` | JSONL file with one entry per run. |
 | `max_log_rows` | `500` | How many rows the UI loads. |
 
 ## What an update actually does
 
 When you press **Update now** or the scheduler fires, the service runs the
-following inside `repo_path`, in order:
+following inside `repo_path`, in order, stopping at the first failure:
 
 1. `git fetch --prune <remote>`
 2. `git checkout <branch>`
 3. `git reset --hard <remote>/<branch>`
-4. The configured `post_update_command` (if any).
+4. **Build step** — if `auto_build_enabled` is on (or `build_command` is set
+   explicitly). See [Auto-build](#auto-build) below.
+5. `post_update_command` (if any).
+6. **Service restart** — if `service_manage_enabled` is on, runs
+   `systemctl restart <service_name>` (or `systemctl --user restart …` for
+   user-scope units).
 
 This is **destructive to local changes** in the working copy by design — the
 goal is to make the deployed tree exactly match the remote branch. Don't
@@ -127,6 +149,82 @@ point this at a working copy you also edit by hand.
 
 Each run is appended to `log_path` as a single JSON line and shown in the
 **Update history** panel.
+
+## Auto-build
+
+When `auto_build_enabled` is on, after every successful pull the updater
+inspects `repo_path` and picks the first matching toolchain that's also
+available on `PATH`:
+
+| Marker file in repo | Tool   | Default command                           |
+|---------------------|--------|-------------------------------------------|
+| `go.mod`            | `go`   | `go build -o <repo>/<name> ./...`         |
+| `Cargo.toml`        | `cargo`| `cargo build --release`                   |
+| `Makefile`          | `make` | `make`                                    |
+| `package.json`      | `npm`  | `npm run build`                           |
+
+The detection result (kind, tool path, version, suggested command) is shown
+live in the UI under **Build → Detection**. You can override the command
+entirely by filling in **Build command** and **Build args** — when
+`build_command` is non-empty it always wins over auto-detection.
+
+The build runs with `cwd = repo_path`, inherits the process environment, and
+gets any extra `KEY=VALUE` pairs from `git_env` appended.
+
+There's a **Build now** button to run the build step on its own without
+pulling.
+
+## Managed systemd service
+
+When `service_manage_enabled` is on with a `service_name` set, the updater
+runs `systemctl restart <service>` after a successful build. The
+**Install &amp; start** button writes a unit file with the values from the
+form, runs `daemon-reload`, `enable`, and `restart`. **Uninstall** does the
+reverse and removes the file.
+
+Two scopes are supported:
+
+- **`system`** — writes `/etc/systemd/system/<name>.service` and runs
+  `systemctl …`. Requires the updater process to have permission to write
+  there and to talk to the system bus (running as root, or with a sudoers
+  rule, or as a user with the right polkit policy).
+- **`user`** — writes `~/.config/systemd/user/<name>.service` and runs
+  `systemctl --user …`. Runs entirely as the updater's own user, which is
+  the recommended setup for a single-user VPS. You may need
+  `loginctl enable-linger <user>` so the user manager runs without an
+  interactive session.
+
+The generated unit looks roughly like:
+
+```ini
+[Unit]
+Description=<service_description>
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=<service_user>                 ; system scope only
+WorkingDirectory=<service_working_dir or repo_path>
+Environment=KEY=VALUE               ; one line per service_env entry
+ExecStart=<service_exec_start> <service_exec_args...>
+Restart=<service_restart>           ; on-failure | always | no
+RestartSec=5s
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target          ; default.target for user scope
+```
+
+If `service_exec_start` is empty, the updater falls back to the build
+output suggested by detection (e.g. `<repo>/<dirname>` for Go,
+`<repo>/target/release/<dirname>` for Cargo). Use **Preview unit** in the UI
+to see exactly what will be written before clicking **Install &amp; start**.
+
+> Heads up: any account that can log into the web UI can install and run a
+> systemd service as the updater's user (and as `root` for system-scope
+> units if the updater has that privilege). Treat the admin login
+> accordingly and put the UI behind HTTPS.
 
 ## Running as a service
 
@@ -244,9 +342,11 @@ The app never sees or stores Git credentials.
 ├── main.go                  entrypoint, flag parsing, lifecycle
 ├── internal/
 │   ├── auth/                bcrypt, signed-cookie sessions, CSRF, rate limit
+│   ├── build/               toolchain detection (go/cargo/make/npm) + runner
 │   ├── config/              JSON config load/save with atomic replace
 │   ├── git/                 update runner + scheduler + JSONL log
-│   └── server/              HTTP routes, middleware, handlers
+│   ├── server/              HTTP routes, middleware, handlers
+│   └── service/             systemd unit generator + systemctl wrapper
 └── web/
     ├── embed.go             go:embed of static/
     └── static/              login + dashboard (vanilla HTML/CSS/JS)

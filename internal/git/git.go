@@ -13,7 +13,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/s95f/servergitupdater/internal/build"
 	"github.com/s95f/servergitupdater/internal/config"
+	"github.com/s95f/servergitupdater/internal/service"
 )
 
 type Status struct {
@@ -159,6 +161,17 @@ func (u *Updater) RunUpdate(ctx context.Context, source string) (LogEntry, error
 	newHead, _ := u.runGit(ctx, snap, "rev-parse", "HEAD")
 	entry.NewHead = strings.TrimSpace(newHead)
 
+	if snap.AutoBuildEnabled || snap.BuildCommand != "" {
+		out, err := build.Run(ctx, snap.RepoPath, snap.BuildCommand, snap.BuildArgs, snap.GitEnv, snap.AutoBuildEnabled)
+		buf.WriteString(out)
+		if err != nil {
+			entry.Output = buf.String()
+			entry.Duration = time.Since(start).Round(time.Millisecond).String()
+			u.appendLog(entry)
+			return entry, fmt.Errorf("build: %w", err)
+		}
+	}
+
 	if snap.PostUpdateCommand != "" {
 		out, err := u.runHook(ctx, snap)
 		fmt.Fprintf(&buf, "$ %s %s\n%s\n", snap.PostUpdateCommand, strings.Join(snap.PostUpdateArgs, " "), out)
@@ -167,6 +180,21 @@ func (u *Updater) RunUpdate(ctx context.Context, source string) (LogEntry, error
 			entry.Duration = time.Since(start).Round(time.Millisecond).String()
 			u.appendLog(entry)
 			return entry, err
+		}
+	}
+
+	if snap.ServiceManageEnabled && snap.ServiceName != "" {
+		scope := service.Scope(snap.ServiceScope)
+		if scope == "" {
+			scope = service.ScopeSystem
+		}
+		out, err := service.Restart(ctx, scope, snap.ServiceName)
+		buf.WriteString(out)
+		if err != nil {
+			entry.Output = buf.String()
+			entry.Duration = time.Since(start).Round(time.Millisecond).String()
+			u.appendLog(entry)
+			return entry, fmt.Errorf("service restart: %w", err)
 		}
 	}
 

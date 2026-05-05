@@ -33,6 +33,26 @@ type Snapshot struct {
 	AutoUpdateEnabled bool `json:"auto_update_enabled"`
 	AutoUpdateMinutes int  `json:"auto_update_minutes"`
 
+	// Build step. Runs after a successful pull, before the post-update hook
+	// and before any service restart.
+	AutoBuildEnabled bool     `json:"auto_build_enabled"`
+	BuildCommand     string   `json:"build_command,omitempty"` // override; empty = use detected default
+	BuildArgs        []string `json:"build_args,omitempty"`
+
+	// Managed systemd service. When ServiceManageEnabled is true the updater
+	// will restart the named service after a successful update + build.
+	// "Install service" from the UI writes the unit and enables it.
+	ServiceManageEnabled bool     `json:"service_manage_enabled"`
+	ServiceName          string   `json:"service_name,omitempty"`
+	ServiceScope         string   `json:"service_scope,omitempty"` // "system" or "user"
+	ServiceDescription   string   `json:"service_description,omitempty"`
+	ServiceExecStart     string   `json:"service_exec_start,omitempty"` // empty = use build output
+	ServiceExecArgs      []string `json:"service_exec_args,omitempty"`
+	ServiceWorkingDir    string   `json:"service_working_dir,omitempty"`
+	ServiceUser          string   `json:"service_user,omitempty"`
+	ServiceEnv           []string `json:"service_env,omitempty"`
+	ServiceRestart       string   `json:"service_restart,omitempty"` // on-failure | always | no
+
 	LogPath    string `json:"log_path"`
 	MaxLogRows int    `json:"max_log_rows"`
 }
@@ -52,6 +72,9 @@ func defaults() Snapshot {
 		Remote:            "origin",
 		AutoUpdateEnabled: false,
 		AutoUpdateMinutes: 15,
+		AutoBuildEnabled:  false,
+		ServiceScope:      "system",
+		ServiceRestart:    "on-failure",
 		LogPath:           "updates.log",
 		MaxLogRows:        500,
 	}
@@ -116,6 +139,9 @@ func (c *Config) Snapshot() Snapshot {
 	out := c.data
 	out.PostUpdateArgs = append([]string(nil), c.data.PostUpdateArgs...)
 	out.GitEnv = append([]string(nil), c.data.GitEnv...)
+	out.BuildArgs = append([]string(nil), c.data.BuildArgs...)
+	out.ServiceExecArgs = append([]string(nil), c.data.ServiceExecArgs...)
+	out.ServiceEnv = append([]string(nil), c.data.ServiceEnv...)
 	return out
 }
 
