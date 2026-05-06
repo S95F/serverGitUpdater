@@ -7,14 +7,17 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/s95f/servergitupdater/internal/auth"
 	"github.com/s95f/servergitupdater/internal/build"
+	"github.com/s95f/servergitupdater/internal/caddy"
 	"github.com/s95f/servergitupdater/internal/config"
 	"github.com/s95f/servergitupdater/internal/git"
 	"github.com/s95f/servergitupdater/internal/service"
+	"github.com/s95f/servergitupdater/internal/tmpl"
 	"github.com/s95f/servergitupdater/web"
 )
 
@@ -65,6 +68,12 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/service/install", s.requireAuthCSRF(s.handleServiceInstall))
 	mux.HandleFunc("POST /api/service/uninstall", s.requireAuthCSRF(s.handleServiceUninstall))
 	mux.HandleFunc("POST /api/service/restart", s.requireAuthCSRF(s.handleServiceRestart))
+
+	mux.HandleFunc("GET /api/caddy/status", s.requireAuth(s.handleCaddyStatus))
+	mux.HandleFunc("GET /api/caddy/preview", s.requireAuth(s.handleCaddyPreview))
+	mux.HandleFunc("POST /api/caddy/apply", s.requireAuthCSRF(s.handleCaddyApply))
+	mux.HandleFunc("POST /api/caddy/remove", s.requireAuthCSRF(s.handleCaddyRemove))
+	mux.HandleFunc("POST /api/caddy/reload", s.requireAuthCSRF(s.handleCaddyReload))
 
 	return s.securityHeaders(mux)
 }
@@ -277,6 +286,9 @@ type configPayload struct {
 	BuildCommand     string   `json:"build_command"`
 	BuildArgs        []string `json:"build_args"`
 
+	AppPort  int    `json:"app_port"`
+	PortFlag string `json:"port_flag"`
+
 	ServiceManageEnabled bool     `json:"service_manage_enabled"`
 	ServiceName          string   `json:"service_name"`
 	ServiceScope         string   `json:"service_scope"`
@@ -287,6 +299,15 @@ type configPayload struct {
 	ServiceUser          string   `json:"service_user"`
 	ServiceEnv           []string `json:"service_env"`
 	ServiceRestart       string   `json:"service_restart"`
+
+	CaddyEnabled       bool     `json:"caddy_enabled"`
+	CaddyAutoApply     bool     `json:"caddy_auto_apply"`
+	CaddyDomain        string   `json:"caddy_domain"`
+	CaddyUpstream      string   `json:"caddy_upstream"`
+	CaddyExtra         string   `json:"caddy_extra"`
+	CaddySnippetDir    string   `json:"caddy_snippet_dir"`
+	CaddySnippetName   string   `json:"caddy_snippet_name"`
+	CaddyReloadCommand []string `json:"caddy_reload_command"`
 }
 
 func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
@@ -302,6 +323,8 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		AutoBuildEnabled:     snap.AutoBuildEnabled,
 		BuildCommand:         snap.BuildCommand,
 		BuildArgs:            snap.BuildArgs,
+		AppPort:              snap.AppPort,
+		PortFlag:             snap.PortFlag,
 		ServiceManageEnabled: snap.ServiceManageEnabled,
 		ServiceName:          snap.ServiceName,
 		ServiceScope:         snap.ServiceScope,
@@ -312,6 +335,14 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		ServiceUser:          snap.ServiceUser,
 		ServiceEnv:           snap.ServiceEnv,
 		ServiceRestart:       snap.ServiceRestart,
+		CaddyEnabled:         snap.CaddyEnabled,
+		CaddyAutoApply:       snap.CaddyAutoApply,
+		CaddyDomain:          snap.CaddyDomain,
+		CaddyUpstream:        snap.CaddyUpstream,
+		CaddyExtra:           snap.CaddyExtra,
+		CaddySnippetDir:      snap.CaddySnippetDir,
+		CaddySnippetName:     snap.CaddySnippetName,
+		CaddyReloadCommand:   snap.CaddyReloadCommand,
 	})
 }
 
@@ -347,6 +378,19 @@ func (s *Server) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 		restart = "on-failure"
 	}
 
+	portFlag := strings.TrimSpace(p.PortFlag)
+	if portFlag == "" {
+		portFlag = "-port"
+	}
+	if p.AppPort < 0 || p.AppPort > 65535 {
+		writeJSONError(w, http.StatusBadRequest, "app_port must be between 0 and 65535")
+		return
+	}
+	caddyReload := p.CaddyReloadCommand
+	if len(caddyReload) == 0 {
+		caddyReload = []string{"systemctl", "reload", "caddy"}
+	}
+
 	if err := s.cfg.Update(s.configPath, func(c *config.Snapshot) {
 		c.RepoPath = p.RepoPath
 		c.Branch = p.Branch
@@ -358,6 +402,8 @@ func (s *Server) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 		c.AutoBuildEnabled = p.AutoBuildEnabled
 		c.BuildCommand = strings.TrimSpace(p.BuildCommand)
 		c.BuildArgs = p.BuildArgs
+		c.AppPort = p.AppPort
+		c.PortFlag = portFlag
 		c.ServiceManageEnabled = p.ServiceManageEnabled
 		c.ServiceName = strings.TrimSpace(p.ServiceName)
 		c.ServiceScope = scope
@@ -368,6 +414,14 @@ func (s *Server) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 		c.ServiceUser = strings.TrimSpace(p.ServiceUser)
 		c.ServiceEnv = p.ServiceEnv
 		c.ServiceRestart = restart
+		c.CaddyEnabled = p.CaddyEnabled
+		c.CaddyAutoApply = p.CaddyAutoApply
+		c.CaddyDomain = strings.TrimSpace(p.CaddyDomain)
+		c.CaddyUpstream = strings.TrimSpace(p.CaddyUpstream)
+		c.CaddyExtra = p.CaddyExtra
+		c.CaddySnippetDir = strings.TrimSpace(p.CaddySnippetDir)
+		c.CaddySnippetName = strings.TrimSpace(p.CaddySnippetName)
+		c.CaddyReloadCommand = caddyReload
 	}); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "save failed")
 		return
@@ -385,7 +439,8 @@ func (s *Server) handleBuildDetect(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleBuildRun(w http.ResponseWriter, r *http.Request) {
 	snap := s.cfg.Snapshot()
-	out, err := build.Run(r.Context(), snap.RepoPath, snap.BuildCommand, snap.BuildArgs, snap.GitEnv, snap.AutoBuildEnabled)
+	vars := tmpl.Vars{Port: snap.AppPort, RepoPath: snap.RepoPath, Name: snap.ServiceName}
+	out, err := build.Run(r.Context(), snap.RepoPath, snap.BuildCommand, snap.BuildArgs, snap.GitEnv, snap.AutoBuildEnabled, vars)
 	resp := map[string]any{"ok": err == nil, "output": out}
 	if err != nil {
 		resp["error"] = err.Error()
@@ -420,12 +475,24 @@ func (s *Server) buildSpec(snap config.Snapshot) (service.Spec, error) {
 	if desc == "" && snap.ServiceName != "" {
 		desc = "serverGitUpdater-managed: " + snap.ServiceName
 	}
+
+	vars := tmpl.Vars{Port: snap.AppPort, RepoPath: snap.RepoPath, Name: snap.ServiceName}
+	exec = vars.Apply(exec)
+	args := vars.ApplyAll(snap.ServiceExecArgs)
+	if snap.AppPort > 0 && !tmpl.HasPort(snap.ServiceExecArgs) {
+		flag := snap.PortFlag
+		if flag == "" {
+			flag = "-port"
+		}
+		args = append(args, flag, strconv.Itoa(snap.AppPort))
+	}
+
 	return service.Spec{
 		Name:        snap.ServiceName,
 		Scope:       scope,
 		Description: desc,
 		ExecStart:   exec,
-		ExecArgs:    snap.ServiceExecArgs,
+		ExecArgs:    args,
 		WorkingDir:  wd,
 		User:        snap.ServiceUser,
 		Env:         snap.ServiceEnv,
@@ -566,6 +633,88 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"entries": entries})
+}
+
+// ---------- caddy endpoints ----------
+
+func (s *Server) caddyConfig(snap config.Snapshot) caddy.Config {
+	return caddy.Config{
+		Enabled:       snap.CaddyEnabled,
+		Domain:        snap.CaddyDomain,
+		Upstream:      snap.CaddyUpstream,
+		Extra:         snap.CaddyExtra,
+		SnippetDir:    snap.CaddySnippetDir,
+		SnippetName:   snap.CaddySnippetName,
+		ReloadCommand: snap.CaddyReloadCommand,
+		Vars:          tmpl.Vars{Port: snap.AppPort, RepoPath: snap.RepoPath, Name: snap.ServiceName},
+	}
+}
+
+func (s *Server) handleCaddyStatus(w http.ResponseWriter, r *http.Request) {
+	snap := s.cfg.Snapshot()
+	if !snap.CaddyEnabled || snap.CaddyDomain == "" || (snap.CaddySnippetName == "" && snap.ServiceName == "") {
+		writeJSON(w, http.StatusOK, map[string]any{"configured": false})
+		return
+	}
+	st := caddy.ReadStatus(s.caddyConfig(snap))
+	writeJSON(w, http.StatusOK, map[string]any{"configured": true, "status": st})
+}
+
+func (s *Server) handleCaddyPreview(w http.ResponseWriter, r *http.Request) {
+	snap := s.cfg.Snapshot()
+	c := s.caddyConfig(snap)
+	content, err := c.Render()
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	st := caddy.ReadStatus(c)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"snippet_path": st.SnippetPath,
+		"snippet":      content,
+	})
+}
+
+func (s *Server) handleCaddyApply(w http.ResponseWriter, r *http.Request) {
+	snap := s.cfg.Snapshot()
+	out, err := caddy.Apply(r.Context(), s.caddyConfig(snap))
+	resp := map[string]any{"ok": err == nil, "output": out}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
+	status := http.StatusOK
+	if err != nil {
+		status = http.StatusInternalServerError
+	}
+	writeJSON(w, status, resp)
+}
+
+func (s *Server) handleCaddyRemove(w http.ResponseWriter, r *http.Request) {
+	snap := s.cfg.Snapshot()
+	out, err := caddy.Remove(r.Context(), s.caddyConfig(snap))
+	resp := map[string]any{"ok": err == nil, "output": out}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
+	status := http.StatusOK
+	if err != nil {
+		status = http.StatusInternalServerError
+	}
+	writeJSON(w, status, resp)
+}
+
+func (s *Server) handleCaddyReload(w http.ResponseWriter, r *http.Request) {
+	snap := s.cfg.Snapshot()
+	out, err := caddy.Reload(r.Context(), s.caddyConfig(snap))
+	resp := map[string]any{"ok": err == nil, "output": out}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
+	status := http.StatusOK
+	if err != nil {
+		status = http.StatusInternalServerError
+	}
+	writeJSON(w, status, resp)
 }
 
 // ---------- helpers ----------

@@ -82,6 +82,22 @@
           <label>Build args (one per line)
             <textarea name="build_args" rows="3" placeholder="build&#10;-o&#10;./bin/myapp&#10;./..."></textarea>
           </label>
+          <p class="muted small">
+            Build and run args support <code>{port}</code>, <code>{repo_path}</code>, and <code>{name}</code> placeholders.
+          </p>
+          <div class="two-col">
+            <label>App port
+              <input type="number" name="app_port" min="0" max="65535" placeholder="8081">
+            </label>
+            <label>Port flag
+              <input type="text" name="port_flag" placeholder="-port" value="-port">
+            </label>
+          </div>
+          <p class="muted small">
+            If the port is set and no run/build arg contains <code>{port}</code>,
+            <code>&lt;port flag&gt; &lt;port&gt;</code> is appended to the
+            service ExecStart args automatically.
+          </p>
           <div class="row">
             <button type="button" id="build-now" class="ghost">Build now</button>
           </div>
@@ -143,6 +159,49 @@
           <details>
             <summary>Last service action output</summary>
             <pre id="svc-output">—</pre>
+          </details>
+        </fieldset>
+
+        <fieldset>
+          <legend>Caddy reverse proxy</legend>
+          <label class="checkbox">
+            <input type="checkbox" name="caddy_enabled">
+            <span>Enable Caddy site for this app</span>
+          </label>
+          <label class="checkbox">
+            <input type="checkbox" name="caddy_auto_apply">
+            <span>Re-apply &amp; reload after every successful update</span>
+          </label>
+          <label>Domain
+            <input type="text" name="caddy_domain" placeholder="myapp.example.com">
+          </label>
+          <label>Upstream (defaults to <code>127.0.0.1:{port}</code>)
+            <input type="text" name="caddy_upstream" placeholder="127.0.0.1:{port}">
+          </label>
+          <label>Extra Caddyfile directives (inside the site block, optional)
+            <textarea name="caddy_extra" rows="3" placeholder="encode zstd gzip&#10;header /api/* Cache-Control no-store"></textarea>
+          </label>
+          <div class="two-col">
+            <label>Snippet directory
+              <input type="text" name="caddy_snippet_dir" placeholder="/etc/caddy/sites.d">
+            </label>
+            <label>Snippet name (defaults to service name)
+              <input type="text" name="caddy_snippet_name" placeholder="myapp">
+            </label>
+          </div>
+          <label>Reload command (one token per line)
+            <textarea name="caddy_reload_command" rows="2" placeholder="systemctl&#10;reload&#10;caddy"></textarea>
+          </label>
+          <div class="row">
+            <button type="button" id="caddy-apply" class="primary">Apply &amp; reload</button>
+            <button type="button" id="caddy-reload" class="ghost">Reload only</button>
+            <button type="button" id="caddy-remove" class="ghost danger">Remove</button>
+            <button type="button" id="caddy-preview" class="ghost">Preview snippet</button>
+          </div>
+          <p id="caddy-summary" class="muted small">Status: —</p>
+          <details>
+            <summary>Last Caddy action output</summary>
+            <pre id="caddy-output">—</pre>
           </details>
         </fieldset>
 

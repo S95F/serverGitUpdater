@@ -79,6 +79,9 @@ async function loadConfig() {
   f.build_command.value = cfg.build_command || "";
   f.build_args.value = (cfg.build_args || []).join("\n");
 
+  f.app_port.value = cfg.app_port || "";
+  f.port_flag.value = cfg.port_flag || "-port";
+
   f.service_manage_enabled.checked = !!cfg.service_manage_enabled;
   f.service_name.value = cfg.service_name || "";
   f.service_scope.value = cfg.service_scope || "system";
@@ -89,6 +92,15 @@ async function loadConfig() {
   f.service_user.value = cfg.service_user || "";
   f.service_env.value = (cfg.service_env || []).join("\n");
   f.service_restart.value = cfg.service_restart || "on-failure";
+
+  f.caddy_enabled.checked = !!cfg.caddy_enabled;
+  f.caddy_auto_apply.checked = !!cfg.caddy_auto_apply;
+  f.caddy_domain.value = cfg.caddy_domain || "";
+  f.caddy_upstream.value = cfg.caddy_upstream || "127.0.0.1:{port}";
+  f.caddy_extra.value = cfg.caddy_extra || "";
+  f.caddy_snippet_dir.value = cfg.caddy_snippet_dir || "/etc/caddy/sites.d";
+  f.caddy_snippet_name.value = cfg.caddy_snippet_name || "";
+  f.caddy_reload_command.value = (cfg.caddy_reload_command || ["systemctl", "reload", "caddy"]).join("\n");
 }
 
 function lines(value) {
@@ -119,6 +131,9 @@ async function saveConfig(ev) {
         build_command: f.build_command.value.trim(),
         build_args: lines(f.build_args.value),
 
+        app_port: parseInt(f.app_port.value, 10) || 0,
+        port_flag: f.port_flag.value.trim() || "-port",
+
         service_manage_enabled: f.service_manage_enabled.checked,
         service_name: f.service_name.value.trim(),
         service_scope: f.service_scope.value,
@@ -129,10 +144,24 @@ async function saveConfig(ev) {
         service_user: f.service_user.value.trim(),
         service_env: lines(f.service_env.value),
         service_restart: f.service_restart.value,
+
+        caddy_enabled: f.caddy_enabled.checked,
+        caddy_auto_apply: f.caddy_auto_apply.checked,
+        caddy_domain: f.caddy_domain.value.trim(),
+        caddy_upstream: f.caddy_upstream.value.trim(),
+        caddy_extra: f.caddy_extra.value,
+        caddy_snippet_dir: f.caddy_snippet_dir.value.trim(),
+        caddy_snippet_name: f.caddy_snippet_name.value.trim(),
+        caddy_reload_command: lines(f.caddy_reload_command.value),
       }),
     });
     status.textContent = "Saved.";
-    await Promise.all([refreshStatus(), refreshDetect(), refreshServiceStatus()]);
+    await Promise.all([
+      refreshStatus(),
+      refreshDetect(),
+      refreshServiceStatus(),
+      refreshCaddyStatus(),
+    ]);
   } catch (e) {
     status.textContent = "Error: " + e.message;
   }
@@ -282,6 +311,51 @@ async function svcPreview() {
   }
 }
 
+async function refreshCaddyStatus() {
+  const el = document.getElementById("caddy-summary");
+  try {
+    const r = await api("/api/caddy/status");
+    if (!r.configured) {
+      el.textContent = "Status: caddy not enabled or domain not set";
+      return;
+    }
+    const st = r.status || {};
+    const reloader = st.available ? "reload command available" : st.notes || "reload command unavailable";
+    const onDisk = st.snippet_exists
+      ? st.on_disk_matches
+        ? "snippet on disk matches config"
+        : "snippet on disk DIFFERS from config"
+      : "no snippet on disk";
+    el.textContent = `Status: ${onDisk} | ${reloader}${st.snippet_path ? ` | ${st.snippet_path}` : ""}`;
+  } catch (e) {
+    el.textContent = "Status error: " + e.message;
+  }
+}
+
+async function caddyAction(path, label) {
+  const el = document.getElementById("caddy-output");
+  const status = document.getElementById("config-status");
+  status.textContent = label + "…";
+  try {
+    const r = await api(path, { method: "POST" });
+    el.textContent = r.output || "(no output)";
+    status.textContent = r.ok ? `${label} OK.` : `${label} failed: ${r.error || "see output"}`;
+    await refreshCaddyStatus();
+  } catch (e) {
+    status.textContent = `${label} error: ` + e.message;
+  }
+}
+
+async function caddyPreview() {
+  const el = document.getElementById("caddy-output");
+  try {
+    const r = await api("/api/caddy/preview");
+    el.textContent = `# would be written to ${r.snippet_path}\n\n${r.snippet}`;
+  } catch (e) {
+    el.textContent = "Preview error: " + e.message;
+  }
+}
+
 document.getElementById("logout").addEventListener("click", async () => {
   await fetch("/logout", { method: "POST", headers: { "X-CSRF-Token": csrfToken() } });
   window.location.href = "/login";
@@ -304,6 +378,16 @@ document.getElementById("svc-uninstall").addEventListener("click", async () => {
 });
 document.getElementById("svc-preview").addEventListener("click", svcPreview);
 
+document.getElementById("caddy-apply").addEventListener("click", () =>
+  caddyAction("/api/caddy/apply", "Apply"));
+document.getElementById("caddy-reload").addEventListener("click", () =>
+  caddyAction("/api/caddy/reload", "Reload"));
+document.getElementById("caddy-remove").addEventListener("click", async () => {
+  if (!window.confirm("Remove the Caddy snippet and reload?")) return;
+  await caddyAction("/api/caddy/remove", "Remove");
+});
+document.getElementById("caddy-preview").addEventListener("click", caddyPreview);
+
 (async () => {
   try {
     await Promise.all([
@@ -312,6 +396,7 @@ document.getElementById("svc-preview").addEventListener("click", svcPreview);
       loadLogs(),
       refreshDetect(),
       refreshServiceStatus(),
+      refreshCaddyStatus(),
     ]);
   } catch (e) {
     console.error(e);

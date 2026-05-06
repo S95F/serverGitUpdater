@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/s95f/servergitupdater/internal/build"
+	"github.com/s95f/servergitupdater/internal/caddy"
 	"github.com/s95f/servergitupdater/internal/config"
 	"github.com/s95f/servergitupdater/internal/service"
+	"github.com/s95f/servergitupdater/internal/tmpl"
 )
 
 type Status struct {
@@ -161,8 +163,10 @@ func (u *Updater) RunUpdate(ctx context.Context, source string) (LogEntry, error
 	newHead, _ := u.runGit(ctx, snap, "rev-parse", "HEAD")
 	entry.NewHead = strings.TrimSpace(newHead)
 
+	vars := tmpl.Vars{Port: snap.AppPort, RepoPath: snap.RepoPath, Name: snap.ServiceName}
+
 	if snap.AutoBuildEnabled || snap.BuildCommand != "" {
-		out, err := build.Run(ctx, snap.RepoPath, snap.BuildCommand, snap.BuildArgs, snap.GitEnv, snap.AutoBuildEnabled)
+		out, err := build.Run(ctx, snap.RepoPath, snap.BuildCommand, snap.BuildArgs, snap.GitEnv, snap.AutoBuildEnabled, vars)
 		buf.WriteString(out)
 		if err != nil {
 			entry.Output = buf.String()
@@ -195,6 +199,26 @@ func (u *Updater) RunUpdate(ctx context.Context, source string) (LogEntry, error
 			entry.Duration = time.Since(start).Round(time.Millisecond).String()
 			u.appendLog(entry)
 			return entry, fmt.Errorf("service restart: %w", err)
+		}
+	}
+
+	if snap.CaddyEnabled && snap.CaddyAutoApply && snap.CaddyDomain != "" {
+		out, err := caddy.Apply(ctx, caddy.Config{
+			Enabled:       snap.CaddyEnabled,
+			Domain:        snap.CaddyDomain,
+			Upstream:      snap.CaddyUpstream,
+			Extra:         snap.CaddyExtra,
+			SnippetDir:    snap.CaddySnippetDir,
+			SnippetName:   snap.CaddySnippetName,
+			ReloadCommand: snap.CaddyReloadCommand,
+			Vars:          vars,
+		})
+		buf.WriteString(out)
+		if err != nil {
+			entry.Output = buf.String()
+			entry.Duration = time.Since(start).Round(time.Millisecond).String()
+			u.appendLog(entry)
+			return entry, fmt.Errorf("caddy apply: %w", err)
 		}
 	}
 

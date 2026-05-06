@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/s95f/servergitupdater/internal/tmpl"
 )
 
 // Kind identifies a project type the builder knows how to handle.
@@ -128,8 +130,9 @@ func detectNode(repoPath string) Detection {
 
 // Run executes the configured build command (or an auto-picked default) inside repoPath.
 // If command is empty and autoEnabled is true, the detected default is used.
+// args go through tmpl substitution so {port}/{repo_path}/{name} are filled in.
 // Returns combined stdout/stderr and an error.
-func Run(ctx context.Context, repoPath, command string, args, env []string, autoEnabled bool) (string, error) {
+func Run(ctx context.Context, repoPath, command string, args, env []string, autoEnabled bool, vars tmpl.Vars) (string, error) {
 	if repoPath == "" {
 		return "", errors.New("repo_path is not configured")
 	}
@@ -147,6 +150,7 @@ func Run(ctx context.Context, repoPath, command string, args, env []string, auto
 		command = d.SuggestedCommand
 		args = d.SuggestedArgs
 	}
+	args = vars.ApplyAll(args)
 
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()

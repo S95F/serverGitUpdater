@@ -13,13 +13,19 @@ Single static binary, embedded frontend, JSON config, no database.
   - View current branch, HEAD commit, working-tree state, and how far behind
     the remote you are.
   - Trigger a manual update (`fetch` + `reset --hard origin/<branch>` + an
-    optional build + post-update hook + service restart).
+    optional build + post-update hook + service restart + Caddy reload).
   - Toggle scheduled auto-updates and change the interval.
   - Edit the repo path, branch, remote, and post-update command.
   - **Auto-detect the project's toolchain (Go, Cargo, Make, npm) and build
     the binary after every pull**, with an optional manual override.
+  - **Pick the app's listen port from the UI** and have it plumbed into the
+    build/run command automatically (`-port <N>` by default, configurable).
   - **Generate, install, restart and uninstall a systemd unit** for the
     deployed binary — system-wide or as a user unit.
+  - **Generate a Caddy site snippet** that reverse-proxies a domain to the
+    app's port, write it to `/etc/caddy/sites.d/<name>.caddy` (or any
+    directory of your choosing), and reload Caddy. Reload happens
+    automatically after every successful update if you opt in.
   - Change your admin password.
   - Browse the recent update history with stdout/stderr from each run.
 - Authenticated, session-based login (bcrypt password, signed cookie).
@@ -114,7 +120,9 @@ in it.
 | `auto_update_minutes` | `15` | Minimum 1. Changes take effect on the next tick. |
 | `auto_build_enabled` | `false` | Run a build step after every successful pull. |
 | `build_command` | empty | Override the auto-detected build tool (e.g. `go`, `cargo`). |
-| `build_args` | `[]` | Argv for `build_command`. |
+| `build_args` | `[]` | Argv for `build_command`; supports `{port}` / `{repo_path}` / `{name}`. |
+| `app_port` | `0` | Port the deployed app should listen on. `0` disables port plumbing. |
+| `port_flag` | `-port` | Flag used when auto-appending the port to run args. |
 | `service_manage_enabled` | `false` | Restart `service_name` after every successful update. |
 | `service_name` | empty | systemd unit name (without `.service`). |
 | `service_scope` | `system` | `system` or `user`. |
@@ -125,6 +133,14 @@ in it.
 | `service_user` | empty | `User=` (system scope only). |
 | `service_env` | `[]` | One `Environment=KEY=VALUE` per entry. |
 | `service_restart` | `on-failure` | `on-failure`, `always`, or `no`. |
+| `caddy_enabled` | `false` | Manage a Caddy site for this app. |
+| `caddy_auto_apply` | `false` | Re-apply the snippet and reload after every successful update. |
+| `caddy_domain` | empty | Hostname for the site block. |
+| `caddy_upstream` | `127.0.0.1:{port}` | Upstream `reverse_proxy` target. |
+| `caddy_extra` | empty | Extra Caddyfile directives inside the site block. |
+| `caddy_snippet_dir` | `/etc/caddy/sites.d` | Directory the snippet is written to. |
+| `caddy_snippet_name` | empty | Snippet filename (without extension); defaults to `service_name`. |
+| `caddy_reload_command` | `["systemctl","reload","caddy"]` | Command run to reload Caddy. |
 | `log_path` | `updates.log` | JSONL file with one entry per run. |
 | `max_log_rows` | `500` | How many rows the UI loads. |
 
@@ -142,6 +158,9 @@ following inside `repo_path`, in order, stopping at the first failure:
 6. **Service restart** — if `service_manage_enabled` is on, runs
    `systemctl restart <service_name>` (or `systemctl --user restart …` for
    user-scope units).
+7. **Caddy apply** — if `caddy_enabled` and `caddy_auto_apply` are on,
+   re-renders the site snippet and reloads Caddy (skips reload if the
+   snippet on disk is already up to date).
 
 This is **destructive to local changes** in the working copy by design — the
 goal is to make the deployed tree exactly match the remote branch. Don't
@@ -173,6 +192,23 @@ gets any extra `KEY=VALUE` pairs from `git_env` appended.
 
 There's a **Build now** button to run the build step on its own without
 pulling.
+
+## Port plumbing
+
+The dashboard has an **App port** field and a **Port flag** field. They drive
+where and how the port is passed to your app:
+
+- Anywhere `{port}` appears in `build_args`, `service_exec_args`, or
+  `caddy_upstream`, it's substituted with the configured port. The same
+  goes for `{repo_path}` and `{name}` (the service name).
+- If `app_port` is set and **none** of the run args (`service_exec_args`)
+  reference `{port}`, the updater appends `<port_flag> <app_port>` to the
+  rendered ExecStart line. Default flag is `-port`, but you can change it
+  to `--port`, `--listen`, etc.
+
+So a Go app whose flag is the conventional `-port` needs zero extra config
+once you fill in the port; an app that wants `--listen=:8081` can put
+`--listen=:{port}` in its run args and skip the auto-append.
 
 ## Managed systemd service
 
@@ -225,6 +261,45 @@ to see exactly what will be written before clicking **Install &amp; start**.
 > systemd service as the updater's user (and as `root` for system-scope
 > units if the updater has that privilege). Treat the admin login
 > accordingly and put the UI behind HTTPS.
+
+## Caddy reverse proxy
+
+When `caddy_enabled` is on with a `caddy_domain`, the **Caddy** panel writes
+a Caddyfile snippet that proxies the domain to the app's port:
+
+```caddy
+myapp.example.com {
+    reverse_proxy 127.0.0.1:8081
+}
+```
+
+The default snippet path is `/etc/caddy/sites.d/<service_name>.caddy`. To
+make Caddy pick it up, add this once in your main `/etc/caddy/Caddyfile`:
+
+```caddy
+import sites.d/*.caddy
+```
+
+Then either click **Apply &amp; reload** in the UI or turn on
+`caddy_auto_apply` so every successful update re-renders and reloads.
+
+The default reload command is `systemctl reload caddy`. You can change it
+to e.g. `caddy reload --config /etc/caddy/Caddyfile` if you don't run Caddy
+under systemd.
+
+You can drop arbitrary directives inside the site block via `caddy_extra`
+(supports `{port}`, `{name}`, `{repo_path}`):
+
+```
+encode zstd gzip
+header /api/* Cache-Control no-store
+```
+
+Permissions are the same story as the systemd unit: writing to
+`/etc/caddy/sites.d` and running `systemctl reload caddy` need the
+appropriate privileges. For a single-user setup you can point
+`caddy_snippet_dir` at a path your deploy user owns and adjust your
+Caddyfile to import from there.
 
 ## Running as a service
 
@@ -343,10 +418,12 @@ The app never sees or stores Git credentials.
 ├── internal/
 │   ├── auth/                bcrypt, signed-cookie sessions, CSRF, rate limit
 │   ├── build/               toolchain detection (go/cargo/make/npm) + runner
+│   ├── caddy/               Caddyfile snippet renderer + reload wrapper
 │   ├── config/              JSON config load/save with atomic replace
 │   ├── git/                 update runner + scheduler + JSONL log
 │   ├── server/              HTTP routes, middleware, handlers
-│   └── service/             systemd unit generator + systemctl wrapper
+│   ├── service/             systemd unit generator + systemctl wrapper
+│   └── tmpl/                {port}/{repo_path}/{name} substitution helper
 └── web/
     ├── embed.go             go:embed of static/
     └── static/              login + dashboard (vanilla HTML/CSS/JS)

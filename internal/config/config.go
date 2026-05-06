@@ -39,6 +39,12 @@ type Snapshot struct {
 	BuildCommand     string   `json:"build_command,omitempty"` // override; empty = use detected default
 	BuildArgs        []string `json:"build_args,omitempty"`
 
+	// Port the deployed app should listen on. Plumbed into service_exec_args
+	// (and optionally build_args) via {port} substitution; if no arg contains
+	// {port}, "port_flag <app_port>" is appended automatically.
+	AppPort  int    `json:"app_port,omitempty"`
+	PortFlag string `json:"port_flag,omitempty"` // e.g. "-port", "--port", "--listen"
+
 	// Managed systemd service. When ServiceManageEnabled is true the updater
 	// will restart the named service after a successful update + build.
 	// "Install service" from the UI writes the unit and enables it.
@@ -52,6 +58,17 @@ type Snapshot struct {
 	ServiceUser          string   `json:"service_user,omitempty"`
 	ServiceEnv           []string `json:"service_env,omitempty"`
 	ServiceRestart       string   `json:"service_restart,omitempty"` // on-failure | always | no
+
+	// Caddy reverse-proxy integration. Writes a Caddyfile snippet to
+	// CaddySnippetDir/<service_name>.caddy and reloads Caddy.
+	CaddyEnabled       bool     `json:"caddy_enabled"`
+	CaddyAutoApply     bool     `json:"caddy_auto_apply"` // re-apply after every successful update
+	CaddyDomain        string   `json:"caddy_domain,omitempty"`
+	CaddyUpstream      string   `json:"caddy_upstream,omitempty"`     // default "127.0.0.1:{port}"
+	CaddyExtra         string   `json:"caddy_extra,omitempty"`        // raw lines inside the site block
+	CaddySnippetDir    string   `json:"caddy_snippet_dir,omitempty"`  // default "/etc/caddy/sites.d"
+	CaddySnippetName   string   `json:"caddy_snippet_name,omitempty"` // default = service_name
+	CaddyReloadCommand []string `json:"caddy_reload_command,omitempty"` // default ["systemctl","reload","caddy"]
 
 	LogPath    string `json:"log_path"`
 	MaxLogRows int    `json:"max_log_rows"`
@@ -72,11 +89,15 @@ func defaults() Snapshot {
 		Remote:            "origin",
 		AutoUpdateEnabled: false,
 		AutoUpdateMinutes: 15,
-		AutoBuildEnabled:  false,
-		ServiceScope:      "system",
-		ServiceRestart:    "on-failure",
-		LogPath:           "updates.log",
-		MaxLogRows:        500,
+		AutoBuildEnabled:   false,
+		PortFlag:           "-port",
+		ServiceScope:       "system",
+		ServiceRestart:     "on-failure",
+		CaddyUpstream:      "127.0.0.1:{port}",
+		CaddySnippetDir:    "/etc/caddy/sites.d",
+		CaddyReloadCommand: []string{"systemctl", "reload", "caddy"},
+		LogPath:            "updates.log",
+		MaxLogRows:         500,
 	}
 }
 
@@ -142,6 +163,7 @@ func (c *Config) Snapshot() Snapshot {
 	out.BuildArgs = append([]string(nil), c.data.BuildArgs...)
 	out.ServiceExecArgs = append([]string(nil), c.data.ServiceExecArgs...)
 	out.ServiceEnv = append([]string(nil), c.data.ServiceEnv...)
+	out.CaddyReloadCommand = append([]string(nil), c.data.CaddyReloadCommand...)
 	return out
 }
 
