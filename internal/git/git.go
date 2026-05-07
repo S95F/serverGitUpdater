@@ -263,10 +263,18 @@ func (u *Updater) RunUpdate(ctx context.Context, appID, source string) (LogEntry
 				snippetName = app.Name
 			}
 		}
+		mode := caddy.Mode(app.CaddyMode)
+		if mode == "" {
+			mode = caddy.ModeProxy
+		}
 		out, err := caddy.Apply(ctx, caddy.Config{
 			Enabled:       app.CaddyEnabled,
+			Mode:          mode,
 			Domain:        app.CaddyDomain,
 			Upstream:      app.CaddyUpstream,
+			Root:          app.CaddyRoot,
+			Browse:        app.CaddyBrowse,
+			TryFiles:      app.CaddyTryFiles,
 			Extra:         app.CaddyExtra,
 			SnippetDir:    app.CaddySnippetDir,
 			SnippetName:   snippetName,

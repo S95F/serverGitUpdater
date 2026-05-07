@@ -42,11 +42,19 @@
 
       "caddy_enabled": true,
       "caddy_auto_apply": true,
+      "caddy_mode": "proxy",
       "caddy_domain": "myapp.example.com",
       "caddy_upstream": "127.0.0.1:{port}",
+      "caddy_root": "",
+      "caddy_browse": false,
+      "caddy_try_files": "",
       "caddy_extra": "encode zstd gzip",
       "caddy_snippet_dir": "/etc/caddy/sites.d",
-      "caddy_reload_command": ["systemctl", "reload", "caddy"]
+      "caddy_reload_command": ["systemctl", "reload", "caddy"],
+      "caddy_files_user": "caddy",
+      "caddy_files_group": "caddy",
+      "caddy_files_dir_mode": "0755",
+      "caddy_files_file_mode": "0644"
     }
   ]
 }

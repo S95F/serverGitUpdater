@@ -49,12 +49,20 @@ type appPayload struct {
 
 	CaddyEnabled       bool     `json:"caddy_enabled"`
 	CaddyAutoApply     bool     `json:"caddy_auto_apply"`
+	CaddyMode          string   `json:"caddy_mode"`
 	CaddyDomain        string   `json:"caddy_domain"`
 	CaddyUpstream      string   `json:"caddy_upstream"`
+	CaddyRoot          string   `json:"caddy_root"`
+	CaddyBrowse        bool     `json:"caddy_browse"`
+	CaddyTryFiles      string   `json:"caddy_try_files"`
 	CaddyExtra         string   `json:"caddy_extra"`
 	CaddySnippetDir    string   `json:"caddy_snippet_dir"`
 	CaddySnippetName   string   `json:"caddy_snippet_name"`
 	CaddyReloadCommand []string `json:"caddy_reload_command"`
+	CaddyFilesUser     string   `json:"caddy_files_user"`
+	CaddyFilesGroup    string   `json:"caddy_files_group"`
+	CaddyFilesDirMode  string   `json:"caddy_files_dir_mode"`
+	CaddyFilesFileMode string   `json:"caddy_files_file_mode"`
 }
 
 func (p appPayload) intoApp(target *config.App) {
@@ -84,12 +92,20 @@ func (p appPayload) intoApp(target *config.App) {
 	target.ServiceRestart = strings.TrimSpace(p.ServiceRestart)
 	target.CaddyEnabled = p.CaddyEnabled
 	target.CaddyAutoApply = p.CaddyAutoApply
+	target.CaddyMode = strings.TrimSpace(p.CaddyMode)
 	target.CaddyDomain = strings.TrimSpace(p.CaddyDomain)
 	target.CaddyUpstream = strings.TrimSpace(p.CaddyUpstream)
+	target.CaddyRoot = strings.TrimSpace(p.CaddyRoot)
+	target.CaddyBrowse = p.CaddyBrowse
+	target.CaddyTryFiles = strings.TrimSpace(p.CaddyTryFiles)
 	target.CaddyExtra = p.CaddyExtra
 	target.CaddySnippetDir = strings.TrimSpace(p.CaddySnippetDir)
 	target.CaddySnippetName = strings.TrimSpace(p.CaddySnippetName)
 	target.CaddyReloadCommand = trimAll(p.CaddyReloadCommand)
+	target.CaddyFilesUser = strings.TrimSpace(p.CaddyFilesUser)
+	target.CaddyFilesGroup = strings.TrimSpace(p.CaddyFilesGroup)
+	target.CaddyFilesDirMode = strings.TrimSpace(p.CaddyFilesDirMode)
+	target.CaddyFilesFileMode = strings.TrimSpace(p.CaddyFilesFileMode)
 }
 
 func appView(a config.App) appPayload {
@@ -120,12 +136,20 @@ func appView(a config.App) appPayload {
 		ServiceRestart:       a.ServiceRestart,
 		CaddyEnabled:         a.CaddyEnabled,
 		CaddyAutoApply:       a.CaddyAutoApply,
+		CaddyMode:            a.CaddyMode,
 		CaddyDomain:          a.CaddyDomain,
 		CaddyUpstream:        a.CaddyUpstream,
+		CaddyRoot:            a.CaddyRoot,
+		CaddyBrowse:          a.CaddyBrowse,
+		CaddyTryFiles:        a.CaddyTryFiles,
 		CaddyExtra:           a.CaddyExtra,
 		CaddySnippetDir:      a.CaddySnippetDir,
 		CaddySnippetName:     a.CaddySnippetName,
 		CaddyReloadCommand:   a.CaddyReloadCommand,
+		CaddyFilesUser:       a.CaddyFilesUser,
+		CaddyFilesGroup:      a.CaddyFilesGroup,
+		CaddyFilesDirMode:    a.CaddyFilesDirMode,
+		CaddyFilesFileMode:   a.CaddyFilesFileMode,
 	}
 }
 
@@ -498,10 +522,18 @@ func (s *Server) caddyConfig(a config.App) caddy.Config {
 			snippetName = a.Name
 		}
 	}
+	mode := caddy.Mode(a.CaddyMode)
+	if mode == "" {
+		mode = caddy.ModeProxy
+	}
 	return caddy.Config{
 		Enabled:       a.CaddyEnabled,
+		Mode:          mode,
 		Domain:        a.CaddyDomain,
 		Upstream:      a.CaddyUpstream,
+		Root:          a.CaddyRoot,
+		Browse:        a.CaddyBrowse,
+		TryFiles:      a.CaddyTryFiles,
 		Extra:         a.CaddyExtra,
 		SnippetDir:    a.CaddySnippetDir,
 		SnippetName:   snippetName,
@@ -562,6 +594,31 @@ func (s *Server) handleCaddyRemove(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := caddy.Remove(r.Context(), s.caddyConfig(a))
 	resp := map[string]any{"ok": err == nil, "output": out}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
+	st := http.StatusOK
+	if err != nil {
+		st = http.StatusInternalServerError
+	}
+	writeJSON(w, st, resp)
+}
+
+func (s *Server) handleCaddyFixPermissions(w http.ResponseWriter, r *http.Request) {
+	a, ok := s.loadResolvedAppOr404(w, r)
+	if !ok {
+		return
+	}
+	c := s.caddyConfig(a)
+	root := c.EffectiveRoot()
+	out, err := caddy.FixPermissions(r.Context(), caddy.PermissionOptions{
+		Root:     root,
+		User:     a.CaddyFilesUser,
+		Group:    a.CaddyFilesGroup,
+		DirMode:  a.CaddyFilesDirMode,
+		FileMode: a.CaddyFilesFileMode,
+	})
+	resp := map[string]any{"ok": err == nil, "output": out, "root": root}
 	if err != nil {
 		resp["error"] = err.Error()
 	}

@@ -160,12 +160,20 @@ It has three layers:
 | `service_restart` | `on-failure` | `on-failure`, `always`, or `no`. |
 | `caddy_enabled` | `false` | Manage a Caddy site for this app. |
 | `caddy_auto_apply` | `false` | Re-apply the snippet and reload after every successful update. |
+| `caddy_mode` | `proxy` | `proxy` to reverse-proxy to `caddy_upstream`, or `file_server` to host the directory directly. |
 | `caddy_domain` | empty | Hostname for the site block. |
-| `caddy_upstream` | `127.0.0.1:{port}` | Upstream `reverse_proxy` target. |
+| `caddy_upstream` | `127.0.0.1:{port}` | Proxy mode: upstream `reverse_proxy` target. |
+| `caddy_root` | empty | File-server mode: directory to serve. Defaults to the resolved repo path. |
+| `caddy_browse` | `false` | File-server mode: enable directory listings (`file_server browse`). |
+| `caddy_try_files` | empty | File-server mode: optional `try_files` directive (e.g. `{path} /index.html` for SPAs). |
 | `caddy_extra` | empty | Extra Caddyfile directives inside the site block. |
 | `caddy_snippet_dir` | `/etc/caddy/sites.d` | Directory the snippet is written to. |
 | `caddy_snippet_name` | empty | Snippet filename (without extension); defaults to `service_name`. |
 | `caddy_reload_command` | `["systemctl","reload","caddy"]` | Command run to reload Caddy. |
+| `caddy_files_user` | empty | File-server mode: user to chown served files to (optional). Requires root or `CAP_CHOWN`. |
+| `caddy_files_group` | empty | File-server mode: group to chown served files to (optional). |
+| `caddy_files_dir_mode` | `0755` | File-server mode: directory mode (octal) applied by **Fix permissions**. |
+| `caddy_files_file_mode` | `0644` | File-server mode: file mode (octal) applied by **Fix permissions**. |
 
 ## What an update actually does
 
@@ -285,16 +293,50 @@ to see exactly what will be written before clicking **Install &amp; start**.
 > units if the updater has that privilege). Treat the admin login
 > accordingly and put the UI behind HTTPS.
 
-## Caddy reverse proxy
+## Caddy
 
-When `caddy_enabled` is on with a `caddy_domain`, the **Caddy** panel writes
-a Caddyfile snippet that proxies the domain to the app's port:
+The **Caddy** tab on the per-app edit page writes a Caddyfile snippet for
+the app and reloads Caddy. It supports two modes via `caddy_mode`:
+
+### Proxy mode (default)
+
+`caddy_mode: "proxy"` reverse-proxies the domain to the app's port:
 
 ```caddy
 myapp.example.com {
     reverse_proxy 127.0.0.1:8081
 }
 ```
+
+### File-server mode
+
+`caddy_mode: "file_server"` hosts a directory directly. The document root
+defaults to the resolved repo path; set `caddy_root` (placeholders
+allowed: `{repo_path}`, `{port}`, `{name}`) to serve a subdirectory like
+`{repo_path}/dist`. Optional `caddy_browse` enables directory listings,
+and `caddy_try_files` adds an SPA-style fallback:
+
+```caddy
+myapp.example.com {
+    root * /srv/apps/myapp/dist
+    try_files {path} /index.html
+    file_server
+}
+```
+
+### Permissions
+
+When using file-server mode the directory has to be readable by the user
+Caddy runs as. The Caddy tab includes a **Fix permissions** action that
+walks the served directory (skipping `.git`) and applies:
+
+- `caddy_files_dir_mode` (default `0755`) to directories,
+- `caddy_files_file_mode` (default `0644`) to files,
+- and, if `caddy_files_user` / `caddy_files_group` are set, `chown` to
+  that user/group.
+
+`chmod` works on anything the running user owns; `chown` requires the
+binary to run as root or hold `CAP_CHOWN`.
 
 The default snippet path is `/etc/caddy/sites.d/<service_name>.caddy`. To
 make Caddy pick it up, add this once in your main `/etc/caddy/Caddyfile`:

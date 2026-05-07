@@ -83,6 +83,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/apps/{id}/caddy/apply", s.requireAuthCSRF(s.handleCaddyApply))
 	mux.HandleFunc("POST /api/apps/{id}/caddy/remove", s.requireAuthCSRF(s.handleCaddyRemove))
 	mux.HandleFunc("POST /api/apps/{id}/caddy/reload", s.requireAuthCSRF(s.handleCaddyReload))
+	mux.HandleFunc("POST /api/apps/{id}/caddy/fix-permissions", s.requireAuthCSRF(s.handleCaddyFixPermissions))
 
 	// admin
 	mux.HandleFunc("GET /api/admin/summary", s.requireAuth(s.handleAdminSummary))

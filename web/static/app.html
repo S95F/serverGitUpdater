@@ -53,9 +53,12 @@
               <input type="text" name="name" required minlength="1" maxlength="63">
             </label>
             <label>Repository path
-              <input type="text" name="repo_path" placeholder="/srv/myapp">
+              <input type="text" name="repo_path" placeholder="myapp or /srv/myapp">
             </label>
           </div>
+          <p class="muted small">
+            <span id="repo-resolution">Relative paths are joined with the server-wide <strong>repos directory</strong> (configurable in Settings). Absolute paths are used as-is.</span>
+          </p>
           <div class="two-col">
             <label>Branch
               <input type="text" name="branch" required>
@@ -80,8 +83,13 @@
             </label>
           </div>
 
-          <fieldset>
-            <legend>Build</legend>
+          <div class="tabs" role="tablist">
+            <button type="button" class="tab active" data-tab="build" role="tab">Build</button>
+            <button type="button" class="tab" data-tab="service" role="tab">Service</button>
+            <button type="button" class="tab" data-tab="caddy" role="tab">Caddy</button>
+          </div>
+
+          <div class="tab-panel" data-panel="build">
             <p class="muted small">
               <span id="detect-summary">Detection: —</span>
               <button type="button" id="detect-btn" class="ghost small">Re-detect</button>
@@ -113,10 +121,9 @@
             <div class="row">
               <button type="button" id="build-now" class="ghost">Build now</button>
             </div>
-          </fieldset>
+          </div>
 
-          <fieldset>
-            <legend>Managed systemd service</legend>
+          <div class="tab-panel" data-panel="service" hidden>
             <label class="checkbox">
               <input type="checkbox" name="service_manage_enabled">
               <span>Restart this service after every successful update</span>
@@ -172,10 +179,9 @@
               <summary>Last service action output</summary>
               <pre id="svc-output">—</pre>
             </details>
-          </fieldset>
+          </div>
 
-          <fieldset>
-            <legend>Caddy reverse proxy</legend>
+          <div class="tab-panel" data-panel="caddy" hidden>
             <label class="checkbox">
               <input type="checkbox" name="caddy_enabled">
               <span>Enable Caddy site for this app</span>
@@ -184,12 +190,69 @@
               <input type="checkbox" name="caddy_auto_apply">
               <span>Re-apply &amp; reload after every successful update</span>
             </label>
-            <label>Domain
-              <input type="text" name="caddy_domain" placeholder="myapp.example.com">
-            </label>
-            <label>Upstream
-              <input type="text" name="caddy_upstream" placeholder="127.0.0.1:{port}">
-            </label>
+            <div class="two-col">
+              <label>Mode
+                <select name="caddy_mode" id="caddy-mode">
+                  <option value="proxy">Reverse proxy (forward to a port)</option>
+                  <option value="file_server">Host directory (serve files from disk)</option>
+                </select>
+              </label>
+              <label>Domain
+                <input type="text" name="caddy_domain" placeholder="myapp.example.com">
+              </label>
+            </div>
+
+            <div class="mode-section" data-mode="proxy">
+              <label>Upstream
+                <input type="text" name="caddy_upstream" placeholder="127.0.0.1:{port}">
+              </label>
+            </div>
+
+            <div class="mode-section" data-mode="file_server" hidden>
+              <label>Document root (leave blank to serve the repo path)
+                <input type="text" name="caddy_root" placeholder="{repo_path}/dist">
+              </label>
+              <div class="two-col">
+                <label class="checkbox">
+                  <input type="checkbox" name="caddy_browse">
+                  <span>Show directory listing when no index file</span>
+                </label>
+                <label>try_files (SPA fallback, optional)
+                  <input type="text" name="caddy_try_files" placeholder="{path} /index.html">
+                </label>
+              </div>
+              <fieldset>
+                <legend>Permissions</legend>
+                <p class="muted small">
+                  Caddy needs read access to every file it serves. Run
+                  <strong>Fix permissions</strong> to chmod the directory tree
+                  (and optionally chown to a Caddy user). chown requires the
+                  binary to run as root or have <code>CAP_CHOWN</code>;
+                  chmod works for files the running user owns. <code>.git</code>
+                  directories are skipped.
+                </p>
+                <div class="two-col">
+                  <label>Files user (optional, for chown)
+                    <input type="text" name="caddy_files_user" placeholder="caddy">
+                  </label>
+                  <label>Files group (optional, for chown)
+                    <input type="text" name="caddy_files_group" placeholder="caddy">
+                  </label>
+                </div>
+                <div class="two-col">
+                  <label>Directory mode (octal)
+                    <input type="text" name="caddy_files_dir_mode" value="0755">
+                  </label>
+                  <label>File mode (octal)
+                    <input type="text" name="caddy_files_file_mode" value="0644">
+                  </label>
+                </div>
+                <div class="row">
+                  <button type="button" id="caddy-fix-perms" class="ghost">Fix permissions</button>
+                </div>
+              </fieldset>
+            </div>
+
             <label>Extra Caddyfile directives
               <textarea name="caddy_extra" rows="3"></textarea>
             </label>
@@ -198,7 +261,7 @@
                 <input type="text" name="caddy_snippet_dir">
               </label>
               <label>Snippet name
-                <input type="text" name="caddy_snippet_name" placeholder="defaults to service name">
+                <input type="text" name="caddy_snippet_name" placeholder="defaults to service / app name">
               </label>
             </div>
             <label>Reload command (one token per line)
@@ -215,7 +278,7 @@
               <summary>Last Caddy action output</summary>
               <pre id="caddy-output">—</pre>
             </details>
-          </fieldset>
+          </div>
 
           <div class="row sticky-actions">
             <button type="submit" class="primary">Save settings</button>

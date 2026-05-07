@@ -8,9 +8,36 @@ const dlg = document.getElementById("new-app-dialog");
 const newForm = document.getElementById("new-app-form");
 const newError = document.getElementById("new-error");
 
+let reposDir = "";
+try {
+  const s = await api("/api/server");
+  reposDir = s.repos_dir || "";
+} catch { /* ignore */ }
+
+const newRepoInput = newForm.querySelector('input[name="repo_path"]');
+const newRepoHint = document.getElementById("new-repo-hint");
+function updateNewRepoHint() {
+  const p = (newRepoInput.value || "").trim();
+  if (!p) {
+    newRepoHint.innerHTML = "You can fill in the rest after the app is created.";
+    return;
+  }
+  if (p.startsWith("/")) {
+    newRepoHint.innerHTML = `Absolute path: <code>${p}</code>`;
+    return;
+  }
+  if (!reposDir) {
+    newRepoHint.innerHTML = `Relative path with no <strong>repos_dir</strong> set — will resolve against the binary's working directory. <a href="/settings#server">Set one in Settings</a>.`;
+    return;
+  }
+  newRepoHint.innerHTML = `Resolves to: <code>${reposDir.replace(/\/$/, "")}/${p}</code>`;
+}
+newRepoInput.addEventListener("input", updateNewRepoHint);
+
 document.getElementById("new-app-btn").addEventListener("click", () => {
   newForm.reset();
   newError.hidden = true;
+  updateNewRepoHint();
   dlg.showModal();
 });
 document.getElementById("new-cancel").addEventListener("click", () => dlg.close());

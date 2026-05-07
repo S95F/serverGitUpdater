@@ -12,6 +12,66 @@ function lines(value) {
   return value.split("\n").map((s) => s.trim()).filter(Boolean);
 }
 
+// ---------- tabs ----------
+const tabs = document.querySelectorAll(".tab");
+const panels = document.querySelectorAll(".tab-panel");
+function showTab(name) {
+  for (const t of tabs) t.classList.toggle("active", t.dataset.tab === name);
+  for (const p of panels) p.hidden = p.dataset.panel !== name;
+  history.replaceState(null, "", `#${name}`);
+}
+for (const t of tabs) {
+  t.addEventListener("click", () => showTab(t.dataset.tab));
+}
+const initialTab = (window.location.hash || "#build").slice(1);
+showTab([...tabs].some((t) => t.dataset.tab === initialTab) ? initialTab : "build");
+
+// ---------- caddy mode toggle ----------
+const modeSelect = document.getElementById("caddy-mode");
+function applyCaddyMode() {
+  const mode = modeSelect.value;
+  for (const s of document.querySelectorAll(".mode-section")) {
+    s.hidden = s.dataset.mode !== mode;
+  }
+}
+modeSelect.addEventListener("change", applyCaddyMode);
+
+// ---------- live "Resolves to" hint for the repo-path input ----------
+let reposDir = "";
+async function loadServerHint() {
+  try {
+    const s = await api("/api/server");
+    reposDir = s.repos_dir || "";
+  } catch { /* ignore */ }
+  updateRepoResolution();
+}
+function joinPath(base, rel) {
+  if (!base) return rel;
+  if (base.endsWith("/")) return base + rel;
+  return base + "/" + rel;
+}
+function isAbs(p) { return p.startsWith("/"); }
+function updateRepoResolution() {
+  const el = document.getElementById("repo-resolution");
+  if (!el) return;
+  const p = (f.repo_path.value || "").trim();
+  if (!p) {
+    el.innerHTML = `Relative paths are joined with the server-wide <strong>repos directory</strong> (configurable in Settings). Absolute paths are used as-is.`;
+    return;
+  }
+  if (isAbs(p)) {
+    el.innerHTML = `Absolute path: <code>${p}</code> (used as-is, ignoring repos_dir)`;
+    return;
+  }
+  if (!reposDir) {
+    el.innerHTML = `Relative path with no <strong>repos_dir</strong> set — will resolve against the binary's working directory. Set one in <a href="/settings#server">Settings → Server configuration</a>.`;
+    return;
+  }
+  const full = joinPath(reposDir, p);
+  el.innerHTML = `Resolves to: <code>${full}</code>`;
+}
+
+// ---------- load / save ----------
 async function loadApp() {
   const r = await api(`/api/apps/${id}`);
   const a = r.app || {};
@@ -45,12 +105,22 @@ async function loadApp() {
 
   f.caddy_enabled.checked = !!a.caddy_enabled;
   f.caddy_auto_apply.checked = !!a.caddy_auto_apply;
+  f.caddy_mode.value = a.caddy_mode || "proxy";
   f.caddy_domain.value = a.caddy_domain || "";
   f.caddy_upstream.value = a.caddy_upstream || "127.0.0.1:{port}";
+  f.caddy_root.value = a.caddy_root || "";
+  f.caddy_browse.checked = !!a.caddy_browse;
+  f.caddy_try_files.value = a.caddy_try_files || "";
   f.caddy_extra.value = a.caddy_extra || "";
   f.caddy_snippet_dir.value = a.caddy_snippet_dir || "/etc/caddy/sites.d";
   f.caddy_snippet_name.value = a.caddy_snippet_name || "";
   f.caddy_reload_command.value = (a.caddy_reload_command || ["systemctl", "reload", "caddy"]).join("\n");
+  f.caddy_files_user.value = a.caddy_files_user || "";
+  f.caddy_files_group.value = a.caddy_files_group || "";
+  f.caddy_files_dir_mode.value = a.caddy_files_dir_mode || "0755";
+  f.caddy_files_file_mode.value = a.caddy_files_file_mode || "0644";
+
+  applyCaddyMode();
 }
 
 async function refreshStatus() {
@@ -109,12 +179,20 @@ async function saveConfig(ev) {
 
         caddy_enabled: f.caddy_enabled.checked,
         caddy_auto_apply: f.caddy_auto_apply.checked,
+        caddy_mode: f.caddy_mode.value,
         caddy_domain: f.caddy_domain.value.trim(),
         caddy_upstream: f.caddy_upstream.value.trim(),
+        caddy_root: f.caddy_root.value.trim(),
+        caddy_browse: f.caddy_browse.checked,
+        caddy_try_files: f.caddy_try_files.value.trim(),
         caddy_extra: f.caddy_extra.value,
         caddy_snippet_dir: f.caddy_snippet_dir.value.trim(),
         caddy_snippet_name: f.caddy_snippet_name.value.trim(),
         caddy_reload_command: lines(f.caddy_reload_command.value),
+        caddy_files_user: f.caddy_files_user.value.trim(),
+        caddy_files_group: f.caddy_files_group.value.trim(),
+        caddy_files_dir_mode: f.caddy_files_dir_mode.value.trim(),
+        caddy_files_file_mode: f.caddy_files_file_mode.value.trim(),
       }),
     });
     status.textContent = "Saved.";
@@ -235,6 +313,7 @@ async function caddyPreview() {
 
 document.getElementById("update-btn").addEventListener("click", runUpdate);
 document.getElementById("refresh-btn").addEventListener("click", refreshStatus);
+f.repo_path.addEventListener("input", updateRepoResolution);
 f.addEventListener("submit", saveConfig);
 document.getElementById("detect-btn").addEventListener("click", refreshDetect);
 document.getElementById("build-now").addEventListener("click", buildNow);
@@ -252,6 +331,12 @@ document.getElementById("caddy-remove").addEventListener("click", async () => {
   await caddyAction(`/api/apps/${id}/caddy/remove`, "Remove");
 });
 document.getElementById("caddy-preview").addEventListener("click", caddyPreview);
+document.getElementById("caddy-fix-perms").addEventListener("click", async () => {
+  const dir = (f.caddy_root.value.trim() || "the resolved repo path");
+  if (!window.confirm(`Walk ${dir} and apply chmod (and chown if a user/group is set)?`)) return;
+  await caddyAction(`/api/apps/${id}/caddy/fix-permissions`, "Fix permissions");
+});
 
-await loadApp();
+await Promise.all([loadApp(), loadServerHint()]);
+updateRepoResolution();
 await Promise.all([refreshStatus(), refreshDetect(), refreshServiceStatus(), refreshCaddyStatus()]);

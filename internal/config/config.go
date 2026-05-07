@@ -50,12 +50,22 @@ type App struct {
 
 	CaddyEnabled       bool     `json:"caddy_enabled"`
 	CaddyAutoApply     bool     `json:"caddy_auto_apply"`
+	CaddyMode          string   `json:"caddy_mode,omitempty"` // "proxy" (default) or "file_server"
 	CaddyDomain        string   `json:"caddy_domain,omitempty"`
 	CaddyUpstream      string   `json:"caddy_upstream,omitempty"`
+	CaddyRoot          string   `json:"caddy_root,omitempty"`     // file_server: dir to serve, defaults to repo path
+	CaddyBrowse        bool     `json:"caddy_browse,omitempty"`   // file_server: show directory listing
+	CaddyTryFiles      string   `json:"caddy_try_files,omitempty"` // file_server: SPA-style fallback
 	CaddyExtra         string   `json:"caddy_extra,omitempty"`
 	CaddySnippetDir    string   `json:"caddy_snippet_dir,omitempty"`
 	CaddySnippetName   string   `json:"caddy_snippet_name,omitempty"`
 	CaddyReloadCommand []string `json:"caddy_reload_command,omitempty"`
+
+	// File-server mode permission fixer.
+	CaddyFilesUser     string `json:"caddy_files_user,omitempty"`
+	CaddyFilesGroup    string `json:"caddy_files_group,omitempty"`
+	CaddyFilesDirMode  string `json:"caddy_files_dir_mode,omitempty"`  // octal e.g. "0755"
+	CaddyFilesFileMode string `json:"caddy_files_file_mode,omitempty"` // octal e.g. "0644"
 
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
@@ -111,9 +121,12 @@ func AppDefaults() App {
 		PortFlag:           "-port",
 		ServiceScope:       "system",
 		ServiceRestart:     "on-failure",
+		CaddyMode:          "proxy",
 		CaddyUpstream:      "127.0.0.1:{port}",
 		CaddySnippetDir:    "/etc/caddy/sites.d",
 		CaddyReloadCommand: []string{"systemctl", "reload", "caddy"},
+		CaddyFilesDirMode:  "0755",
+		CaddyFilesFileMode: "0644",
 	}
 }
 
@@ -289,6 +302,15 @@ func applyAppDefaults(a *App) {
 	}
 	if len(a.CaddyReloadCommand) == 0 {
 		a.CaddyReloadCommand = []string{"systemctl", "reload", "caddy"}
+	}
+	if a.CaddyMode == "" {
+		a.CaddyMode = "proxy"
+	}
+	if a.CaddyFilesDirMode == "" {
+		a.CaddyFilesDirMode = "0755"
+	}
+	if a.CaddyFilesFileMode == "" {
+		a.CaddyFilesFileMode = "0644"
 	}
 }
 
