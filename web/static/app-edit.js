@@ -1,4 +1,4 @@
-import { api, fmtTime, fmtRelative, renderTopbar, systemPathWarning } from "/static/nav.js";
+import { api, fmtTime, fmtRelative, renderTopbar, systemPathWarning, resolveUnderReposDir } from "/static/nav.js";
 
 await renderTopbar("apps");
 
@@ -45,31 +45,26 @@ async function loadServerHint() {
   } catch { /* ignore */ }
   updateRepoResolution();
 }
-function joinPath(base, rel) {
-  if (!base) return rel;
-  if (base.endsWith("/")) return base + rel;
-  return base + "/" + rel;
-}
-function isAbs(p) { return p.startsWith("/"); }
 function updateRepoResolution() {
   const el = document.getElementById("repo-resolution");
   if (!el) return;
   const p = (f.repo_path.value || "").trim();
   if (!p) {
-    el.innerHTML = `Relative paths are joined with the server-wide <strong>repos directory</strong> (configurable in Settings). Absolute paths are used as-is.`;
+    el.innerHTML = `When <strong>repos_dir</strong> is set, this path is always joined under it (leading slashes ignored). When repos_dir is empty, an absolute path is used as-is and a relative one is resolved against the binary's working directory.`;
     return;
   }
-  if (isAbs(p)) {
+  if (reposDir) {
+    const full = resolveUnderReposDir(reposDir, p);
+    el.innerHTML = `Resolves to: <code>${full}</code>`;
+    return;
+  }
+  // No repos_dir: keep the old per-mode hints + system-path warning.
+  if (p.startsWith("/")) {
     const warn = systemPathWarning(p);
-    el.innerHTML = `Absolute path: <code>${p}</code> (used as-is, ignoring repos_dir)` + (warn ? `<br>${warn}` : "");
+    el.innerHTML = `Absolute path: <code>${p}</code>` + (warn ? `<br>${warn}` : "");
     return;
   }
-  if (!reposDir) {
-    el.innerHTML = `Relative path with no <strong>repos_dir</strong> set — will resolve against the binary's working directory. Set one in <a href="/settings#server">Settings → Server configuration</a>.`;
-    return;
-  }
-  const full = joinPath(reposDir, p);
-  el.innerHTML = `Resolves to: <code>${full}</code>`;
+  el.innerHTML = `Relative path with no <strong>repos_dir</strong> set — will resolve against the binary's working directory. Set one in <a href="/settings#server">Settings → Server configuration</a>.`;
 }
 
 // ---------- load / save ----------

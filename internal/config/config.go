@@ -510,12 +510,30 @@ func (a App) ResolvedRepoPath(reposDir string) string {
 	return ResolveRepoPath(reposDir, a.RepoPath)
 }
 
-// ResolveRepoPath joins reposDir with repoPath when repoPath is relative.
+// ResolveRepoPath joins reposDir with repoPath. When reposDir is set,
+// repos_dir acts as a hard namespace: leading slashes and ".." segments
+// are stripped so the result is always under reposDir (you can't escape
+// the namespace by writing "/etc/passwd" or "../foo"). When reposDir is
+// empty, repoPath is returned as-is so absolute and cwd-relative paths
+// behave normally.
 func ResolveRepoPath(reposDir, repoPath string) string {
-	if repoPath == "" || filepath.IsAbs(repoPath) || reposDir == "" {
+	if repoPath == "" {
+		return ""
+	}
+	if reposDir == "" {
 		return repoPath
 	}
-	return filepath.Join(reposDir, repoPath)
+	parts := []string{}
+	for _, p := range strings.Split(repoPath, "/") {
+		if p == "" || p == "." || p == ".." {
+			continue
+		}
+		parts = append(parts, p)
+	}
+	if len(parts) == 0 {
+		return reposDir
+	}
+	return filepath.Join(append([]string{reposDir}, parts...)...)
 }
 
 func newID() string {

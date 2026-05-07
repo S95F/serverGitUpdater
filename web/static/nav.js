@@ -50,15 +50,14 @@ export function fmtTime(s) {
   }
 }
 
-// systemPathWarning returns a HTML warning string when an absolute path
-// looks like it would land somewhere the updater process is unlikely to
-// own (root, /etc, /var, /usr, /sys, /proc, /boot, /root). Returns ""
-// when the path looks innocuous.
+// systemPathWarning returns a HTML warning string when a path looks like
+// it would land somewhere the updater process is unlikely to own. It is
+// only useful when repos_dir is empty: when repos_dir is set, the path is
+// always reinterpreted as relative to it so escapes are impossible.
 export function systemPathWarning(p) {
   if (!p || !p.startsWith("/")) return "";
-  const normalized = p.replace(/\/+/g, "/");
-  const parts = normalized.split("/").filter(Boolean);
-  if (parts.length === 0) return ""; // bare "/" — silly but obvious
+  const parts = p.replace(/\/+/g, "/").split("/").filter(Boolean);
+  if (parts.length === 0) return "";
   if (parts.length === 1) {
     return `<strong>Warning:</strong> <code>${p}</code> sits at the filesystem root. Most processes can't write here. Set <strong>repos_dir</strong> in Settings and use a relative path like <code>${parts[0]}</code>.`;
   }
@@ -68,6 +67,17 @@ export function systemPathWarning(p) {
     return `<strong>Warning:</strong> <code>${p}</code> is inside <code>${top}</code>, which is usually owned by root. The clone or update will likely fail with "Permission denied".`;
   }
   return "";
+}
+
+// resolveUnderReposDir mirrors config.ResolveRepoPath in JS so the UI
+// hint matches what the server will actually do.
+export function resolveUnderReposDir(reposDir, repoPath) {
+  if (!repoPath) return "";
+  if (!reposDir) return repoPath;
+  const parts = repoPath.replace(/\/+/g, "/").split("/").filter(p => p && p !== "." && p !== "..");
+  if (parts.length === 0) return reposDir;
+  const base = reposDir.endsWith("/") ? reposDir.slice(0, -1) : reposDir;
+  return base + "/" + parts.join("/");
 }
 
 export function fmtRelative(s) {

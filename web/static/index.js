@@ -1,4 +1,4 @@
-import { api, fmtRelative, el, renderTopbar, systemPathWarning } from "/static/nav.js";
+import { api, fmtRelative, el, renderTopbar, systemPathWarning, resolveUnderReposDir } from "/static/nav.js";
 
 await renderTopbar("apps");
 
@@ -22,16 +22,17 @@ function updateNewRepoHint() {
     newRepoHint.innerHTML = "You can fill in the rest after the app is created.";
     return;
   }
+  if (reposDir) {
+    newRepoHint.innerHTML = `Resolves to: <code>${resolveUnderReposDir(reposDir, p)}</code>`;
+    return;
+  }
+  // No repos_dir set: fall back to old behavior + system-path warning.
   if (p.startsWith("/")) {
     const warn = systemPathWarning(p);
     newRepoHint.innerHTML = `Absolute path: <code>${p}</code>` + (warn ? `<br>${warn}` : "");
     return;
   }
-  if (!reposDir) {
-    newRepoHint.innerHTML = `Relative path with no <strong>repos_dir</strong> set — will resolve against the binary's working directory. <a href="/settings#server">Set one in Settings</a>.`;
-    return;
-  }
-  newRepoHint.innerHTML = `Resolves to: <code>${reposDir.replace(/\/$/, "")}/${p}</code>`;
+  newRepoHint.innerHTML = `Relative path with no <strong>repos_dir</strong> set — will resolve against the binary's working directory. <a href="/settings#server">Set one in Settings</a>.`;
 }
 newRepoInput.addEventListener("input", updateNewRepoHint);
 
