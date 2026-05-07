@@ -9,47 +9,43 @@
   "username": "admin",
   "password_hash": "set via:  ./serverGitUpdater --init-user admin",
 
-  "repo_path": "/srv/myapp",
-  "branch": "main",
-  "remote": "origin",
-  "post_update_command": "",
-  "post_update_args": [],
-  "git_env": [
-    "GIT_SSH_COMMAND=ssh -i /home/deploy/.ssh/id_ed25519 -o StrictHostKeyChecking=yes"
-  ],
-
-  "auto_update_enabled": false,
-  "auto_update_minutes": 15,
-
-  "auto_build_enabled": true,
-  "build_command": "",
-  "build_args": [],
-
-  "app_port": 8081,
-  "port_flag": "-port",
-
-  "service_manage_enabled": true,
-  "service_name": "myapp",
-  "service_scope": "system",
-  "service_description": "My app deployed via serverGitUpdater",
-  "service_exec_start": "",
-  "service_exec_args": [],
-  "service_working_dir": "",
-  "service_user": "deploy",
-  "service_env": [
-    "LOG_LEVEL=info"
-  ],
-  "service_restart": "on-failure",
-
-  "caddy_enabled": true,
-  "caddy_auto_apply": true,
-  "caddy_domain": "myapp.example.com",
-  "caddy_upstream": "127.0.0.1:{port}",
-  "caddy_extra": "encode zstd gzip",
-  "caddy_snippet_dir": "/etc/caddy/sites.d",
-  "caddy_snippet_name": "",
-  "caddy_reload_command": ["systemctl", "reload", "caddy"],
-
   "log_path": "/var/log/servergitupdater/updates.log",
-  "max_log_rows": 500
+  "max_log_rows": 500,
+
+  "apps": [
+    {
+      "name": "myapp",
+      "repo_path": "/srv/myapp",
+      "branch": "main",
+      "remote": "origin",
+      "git_env": [
+        "GIT_SSH_COMMAND=ssh -i /home/deploy/.ssh/id_ed25519 -o StrictHostKeyChecking=yes"
+      ],
+      "auto_update_enabled": false,
+      "auto_update_minutes": 15,
+
+      "auto_build_enabled": true,
+      "build_command": "",
+      "build_args": [],
+
+      "app_port": 8081,
+      "port_flag": "-port",
+
+      "service_manage_enabled": true,
+      "service_name": "myapp",
+      "service_scope": "system",
+      "service_description": "My app deployed via serverGitUpdater",
+      "service_user": "deploy",
+      "service_env": ["LOG_LEVEL=info"],
+      "service_restart": "on-failure",
+
+      "caddy_enabled": true,
+      "caddy_auto_apply": true,
+      "caddy_domain": "myapp.example.com",
+      "caddy_upstream": "127.0.0.1:{port}",
+      "caddy_extra": "encode zstd gzip",
+      "caddy_snippet_dir": "/etc/caddy/sites.d",
+      "caddy_reload_command": ["systemctl", "reload", "caddy"]
+    }
+  ]
 }

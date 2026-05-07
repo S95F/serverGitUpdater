@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Administration - serverGitUpdater</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header id="topbar" class="topbar"></header>
+
+  <main class="page">
+    <h1>Administration</h1>
+
+    <section class="card">
+      <h2>Overview</h2>
+      <div id="overview" class="stat-grid">
+        <div class="stat"><div class="stat-label">Apps</div><div class="stat-value" id="o-apps">—</div></div>
+        <div class="stat"><div class="stat-label">Total runs</div><div class="stat-value" id="o-total">—</div></div>
+        <div class="stat"><div class="stat-label">Successes</div><div class="stat-value good" id="o-ok">—</div></div>
+        <div class="stat"><div class="stat-label">Failures</div><div class="stat-value bad" id="o-fail">—</div></div>
+        <div class="stat"><div class="stat-label">Last 24h runs</div><div class="stat-value" id="o-24h">—</div></div>
+        <div class="stat"><div class="stat-label">24h success rate</div><div class="stat-value" id="o-24h-rate">—</div></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Per-app</h2>
+      <table id="per-app">
+        <thead>
+          <tr><th>App</th><th>Runs</th><th>OK</th><th>Fail</th><th>Avg dur</th><th>Last run</th><th>Last OK</th><th>Last fail</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="card wide">
+      <div class="row" style="justify-content: space-between; align-items: baseline;">
+        <h2>Update history</h2>
+        <label class="inline">Filter
+          <select id="filter">
+            <option value="">All apps</option>
+          </select>
+        </label>
+      </div>
+      <table id="logs">
+        <thead>
+          <tr><th>When</th><th>App</th><th>Source</th><th>Result</th><th>Old → New</th><th>Duration</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <details>
+        <summary>Selected entry output</summary>
+        <pre id="entry-output">Click a row in the table.</pre>
+      </details>
+    </section>
+  </main>
+
+  <script type="module" src="/static/admin.js"></script>
+</body>
+</html>

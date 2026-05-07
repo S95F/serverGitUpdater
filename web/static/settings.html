@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Settings - serverGitUpdater</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header id="topbar" class="topbar"></header>
+
+  <main class="page narrow">
+    <h1>Settings</h1>
+
+    <section class="card">
+      <h2>Change password</h2>
+      <form id="password-form">
+        <label>Current password
+          <input type="password" name="current" autocomplete="current-password" required>
+        </label>
+        <label>New password (min 8 chars)
+          <input type="password" name="new" autocomplete="new-password" minlength="8" required>
+        </label>
+        <button type="submit" class="primary">Update password</button>
+        <p id="password-status" class="muted small"></p>
+      </form>
+    </section>
+  </main>
+
+  <script type="module" src="/static/settings.js"></script>
+</body>
+</html>

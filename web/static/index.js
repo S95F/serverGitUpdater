@@ -1,0 +1,94 @@
+import { api, fmtRelative, el, renderTopbar } from "/static/nav.js";
+
+await renderTopbar("apps");
+
+const tbody = document.querySelector("#apps-table tbody");
+const empty = document.getElementById("empty");
+const dlg = document.getElementById("new-app-dialog");
+const newForm = document.getElementById("new-app-form");
+const newError = document.getElementById("new-error");
+
+document.getElementById("new-app-btn").addEventListener("click", () => {
+  newForm.reset();
+  newError.hidden = true;
+  dlg.showModal();
+});
+document.getElementById("new-cancel").addEventListener("click", () => dlg.close());
+
+newForm.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const fd = new FormData(newForm);
+  try {
+    const r = await api("/api/apps", {
+      method: "POST",
+      body: JSON.stringify({
+        name: fd.get("name"),
+        repo_path: fd.get("repo_path"),
+      }),
+    });
+    dlg.close();
+    if (r.app && r.app.id) {
+      window.location.href = `/apps/${r.app.id}`;
+    } else {
+      await load();
+    }
+  } catch (e) {
+    newError.textContent = e.message;
+    newError.hidden = false;
+  }
+});
+
+function badge(on, label) {
+  return el("span", { class: "badge " + (on ? "on" : "off") }, label);
+}
+
+async function runUpdate(id, btn) {
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Running…";
+  try {
+    const r = await api(`/api/apps/${id}/update`, { method: "POST" });
+    btn.textContent = r.ok ? "OK" : "Failed";
+    setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1500);
+    await load();
+  } catch (e) {
+    btn.textContent = "Error";
+    setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1500);
+    alert("Update error: " + e.message);
+  }
+}
+
+async function deleteApp(id, name) {
+  if (!window.confirm(`Delete "${name}"? This only removes it from the updater; the repo, service unit and Caddy snippet remain on disk unless you uninstall them first.`)) return;
+  await api(`/api/apps/${id}`, { method: "DELETE" });
+  await load();
+}
+
+async function load() {
+  const r = await api("/api/apps");
+  const apps = r.apps || [];
+  tbody.innerHTML = "";
+  empty.hidden = apps.length > 0;
+
+  for (const a of apps) {
+    const updateBtn = el("button", { class: "ghost small", onclick: () => runUpdate(a.id, updateBtn) }, "Update");
+    const editBtn = el("a", { class: "ghost small", href: `/apps/${a.id}` }, "Edit");
+    const deleteBtn = el("button", { class: "ghost small danger", onclick: () => deleteApp(a.id, a.name) }, "Delete");
+
+    const tr = el("tr", {}, [
+      el("td", {}, el("a", { href: `/apps/${a.id}`, class: "name-link" }, a.name)),
+      el("td", { class: "mono" }, a.repo_path || "—"),
+      el("td", { class: "mono" }, a.branch || "—"),
+      el("td", { class: "mono" }, a.app_port ? String(a.app_port) : "—"),
+      el("td", {}, badge(a.auto_update_enabled, a.auto_update_enabled ? `every ${a.auto_update_minutes}m` : "off")),
+      el("td", {}, badge(a.auto_build_enabled, a.auto_build_enabled ? "on" : "off")),
+      el("td", {}, a.service_enabled ? badge(true, a.service_name || "on") : badge(false, "off")),
+      el("td", {}, a.caddy_enabled ? badge(true, a.caddy_domain || "on") : badge(false, "off")),
+      el("td", { class: "muted" }, fmtRelative(a.last_run)),
+      el("td", { class: "actions" }, [updateBtn, editBtn, deleteBtn]),
+    ]);
+    tbody.appendChild(tr);
+  }
+}
+
+await load();

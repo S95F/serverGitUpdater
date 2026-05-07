@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Apps - serverGitUpdater</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header id="topbar" class="topbar"></header>
+
+  <main class="page">
+    <div class="page-head">
+      <h1>Apps</h1>
+      <button id="new-app-btn" class="primary">+ New app</button>
+    </div>
+
+    <p id="empty" class="muted" hidden>No apps yet. Click <strong>+ New app</strong> to add one.</p>
+
+    <table id="apps-table" class="filesystem">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Repository</th>
+          <th>Branch</th>
+          <th>Port</th>
+          <th>Auto-update</th>
+          <th>Auto-build</th>
+          <th>Service</th>
+          <th>Caddy</th>
+          <th>Last run</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </main>
+
+  <dialog id="new-app-dialog" class="modal">
+    <form id="new-app-form" method="dialog">
+      <h2>New app</h2>
+      <label>Name
+        <input type="text" name="name" required minlength="1" maxlength="63" placeholder="myapp">
+      </label>
+      <label>Repository path
+        <input type="text" name="repo_path" placeholder="/srv/myapp">
+      </label>
+      <p class="muted small">You can fill in the rest after the app is created.</p>
+      <div class="row right">
+        <button type="button" id="new-cancel" class="ghost">Cancel</button>
+        <button type="submit" class="primary">Create</button>
+      </div>
+      <p id="new-error" class="error" hidden></p>
+    </form>
+  </dialog>
+
+  <script type="module" src="/static/index.js"></script>
+</body>
+</html>

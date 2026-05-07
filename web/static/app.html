@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>App - serverGitUpdater</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header id="topbar" class="topbar"></header>
+
+  <main class="page">
+    <div class="page-head">
+      <div>
+        <a href="/" class="back-link">← Apps</a>
+        <h1 id="app-title">…</h1>
+      </div>
+      <div id="app-actions" class="row"></div>
+    </div>
+
+    <div class="split">
+      <aside class="card sidebar">
+        <h2>Repository</h2>
+        <dl class="kv">
+          <dt>Path</dt><dd id="s-path">—</dd>
+          <dt>Branch</dt><dd id="s-branch">—</dd>
+          <dt>Remote</dt><dd id="s-remote">—</dd>
+          <dt>HEAD</dt><dd id="s-head">—</dd>
+          <dt>Last commit</dt><dd id="s-subject">—</dd>
+          <dt>Commit time</dt><dd id="s-time">—</dd>
+          <dt>Working tree</dt><dd id="s-dirty">—</dd>
+          <dt>Behind / ahead</dt><dd id="s-ba">—</dd>
+          <dt>Auto-update</dt><dd id="s-auto">—</dd>
+          <dt>Last run</dt><dd id="s-last">—</dd>
+        </dl>
+        <div class="row">
+          <button id="update-btn" class="primary">Update now</button>
+          <button id="refresh-btn" class="ghost">Refresh</button>
+        </div>
+        <p id="update-status" class="muted small"></p>
+        <details>
+          <summary>Last run output</summary>
+          <pre id="last-output">—</pre>
+        </details>
+      </aside>
+
+      <section class="card main">
+        <h2>Settings</h2>
+        <form id="config-form">
+          <div class="two-col">
+            <label>Name
+              <input type="text" name="name" required minlength="1" maxlength="63">
+            </label>
+            <label>Repository path
+              <input type="text" name="repo_path" placeholder="/srv/myapp">
+            </label>
+          </div>
+          <div class="two-col">
+            <label>Branch
+              <input type="text" name="branch" required>
+            </label>
+            <label>Remote
+              <input type="text" name="remote" required>
+            </label>
+          </div>
+          <label>Post-update command
+            <input type="text" name="post_update_command" placeholder="/srv/myapp/deploy.sh">
+          </label>
+          <label>Post-update args (one per line)
+            <textarea name="post_update_args" rows="2" placeholder="--restart"></textarea>
+          </label>
+          <div class="two-col">
+            <label class="checkbox">
+              <input type="checkbox" name="auto_update_enabled">
+              <span>Enable scheduled auto-updates</span>
+            </label>
+            <label>Interval (minutes)
+              <input type="number" name="auto_update_minutes" min="1" value="15" required>
+            </label>
+          </div>
+
+          <fieldset>
+            <legend>Build</legend>
+            <p class="muted small">
+              <span id="detect-summary">Detection: —</span>
+              <button type="button" id="detect-btn" class="ghost small">Re-detect</button>
+            </p>
+            <label class="checkbox">
+              <input type="checkbox" name="auto_build_enabled">
+              <span>Auto-build after every successful pull</span>
+            </label>
+            <label>Build command (override; leave blank for detected default)
+              <input type="text" name="build_command" placeholder="e.g. go">
+            </label>
+            <label>Build args (one per line)
+              <textarea name="build_args" rows="3"></textarea>
+            </label>
+            <p class="muted small">
+              Build &amp; run args support <code>{port}</code>, <code>{repo_path}</code>, <code>{name}</code>.
+            </p>
+            <div class="two-col">
+              <label>App port
+                <input type="number" name="app_port" min="0" max="65535">
+              </label>
+              <label>Port flag
+                <input type="text" name="port_flag" value="-port">
+              </label>
+            </div>
+            <p class="muted small">
+              If <code>{port}</code> isn't used in run args, the updater appends <code>&lt;port flag&gt; &lt;port&gt;</code> to ExecStart automatically.
+            </p>
+            <div class="row">
+              <button type="button" id="build-now" class="ghost">Build now</button>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Managed systemd service</legend>
+            <label class="checkbox">
+              <input type="checkbox" name="service_manage_enabled">
+              <span>Restart this service after every successful update</span>
+            </label>
+            <div class="two-col">
+              <label>Service name
+                <input type="text" name="service_name" placeholder="myapp" pattern="[A-Za-z0-9._@\-]+">
+              </label>
+              <label>Scope
+                <select name="service_scope">
+                  <option value="system">system (root)</option>
+                  <option value="user">user</option>
+                </select>
+              </label>
+            </div>
+            <label>Description
+              <input type="text" name="service_description">
+            </label>
+            <label>ExecStart (path; leave blank to use detected build output)
+              <input type="text" name="service_exec_start" placeholder="/srv/myapp/myapp">
+            </label>
+            <label>ExecStart args (one per line)
+              <textarea name="service_exec_args" rows="2"></textarea>
+            </label>
+            <div class="two-col">
+              <label>Working directory
+                <input type="text" name="service_working_dir">
+              </label>
+              <label>Run as user (system scope)
+                <input type="text" name="service_user">
+              </label>
+            </div>
+            <div class="two-col">
+              <label>Environment (KEY=VALUE per line)
+                <textarea name="service_env" rows="2"></textarea>
+              </label>
+              <label>Restart policy
+                <select name="service_restart">
+                  <option value="on-failure">on-failure</option>
+                  <option value="always">always</option>
+                  <option value="no">no</option>
+                </select>
+              </label>
+            </div>
+            <div class="row">
+              <button type="button" id="svc-install" class="primary">Install &amp; start</button>
+              <button type="button" id="svc-restart" class="ghost">Restart</button>
+              <button type="button" id="svc-uninstall" class="ghost danger">Uninstall</button>
+              <button type="button" id="svc-preview" class="ghost">Preview unit</button>
+            </div>
+            <p id="svc-summary" class="muted small">Status: —</p>
+            <details>
+              <summary>Last service action output</summary>
+              <pre id="svc-output">—</pre>
+            </details>
+          </fieldset>
+
+          <fieldset>
+            <legend>Caddy reverse proxy</legend>
+            <label class="checkbox">
+              <input type="checkbox" name="caddy_enabled">
+              <span>Enable Caddy site for this app</span>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="caddy_auto_apply">
+              <span>Re-apply &amp; reload after every successful update</span>
+            </label>
+            <label>Domain
+              <input type="text" name="caddy_domain" placeholder="myapp.example.com">
+            </label>
+            <label>Upstream
+              <input type="text" name="caddy_upstream" placeholder="127.0.0.1:{port}">
+            </label>
+            <label>Extra Caddyfile directives
+              <textarea name="caddy_extra" rows="3"></textarea>
+            </label>
+            <div class="two-col">
+              <label>Snippet directory
+                <input type="text" name="caddy_snippet_dir">
+              </label>
+              <label>Snippet name
+                <input type="text" name="caddy_snippet_name" placeholder="defaults to service name">
+              </label>
+            </div>
+            <label>Reload command (one token per line)
+              <textarea name="caddy_reload_command" rows="2"></textarea>
+            </label>
+            <div class="row">
+              <button type="button" id="caddy-apply" class="primary">Apply &amp; reload</button>
+              <button type="button" id="caddy-reload" class="ghost">Reload only</button>
+              <button type="button" id="caddy-remove" class="ghost danger">Remove</button>
+              <button type="button" id="caddy-preview" class="ghost">Preview snippet</button>
+            </div>
+            <p id="caddy-summary" class="muted small">Status: —</p>
+            <details>
+              <summary>Last Caddy action output</summary>
+              <pre id="caddy-output">—</pre>
+            </details>
+          </fieldset>
+
+          <div class="row sticky-actions">
+            <button type="submit" class="primary">Save settings</button>
+            <span id="config-status" class="muted small"></span>
+          </div>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <script type="module" src="/static/app-edit.js"></script>
+</body>
+</html>
