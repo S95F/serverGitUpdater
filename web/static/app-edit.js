@@ -117,6 +117,17 @@ async function loadApp() {
   f.caddy_files_dir_mode.value = a.caddy_files_dir_mode || "0755";
   f.caddy_files_file_mode.value = a.caddy_files_file_mode || "0644";
 
+  f.import_from_repo_file.checked = !!a.import_from_repo_file;
+  f.repo_file_path.value = a.repo_file_path || ".servergitupdater.json";
+
+  f.webhook_enabled.checked = !!a.webhook_enabled;
+  f.webhook_branch_only.checked = !!a.webhook_branch_only;
+  f.webhook_secret.value = ""; // never echo persisted secret in the input
+  document.getElementById("webhook-secret").placeholder = a.webhook_secret
+    ? "(secret on file — leave blank to keep, type or generate to replace)"
+    : "(no secret yet — type one or click Generate new secret)";
+  document.getElementById("webhook-url").value = `${window.location.origin}/api/apps/${id}/webhook`;
+
   applyCaddyMode();
 }
 
@@ -214,6 +225,13 @@ async function saveConfig(ev) {
         caddy_files_group: f.caddy_files_group.value.trim(),
         caddy_files_dir_mode: f.caddy_files_dir_mode.value.trim(),
         caddy_files_file_mode: f.caddy_files_file_mode.value.trim(),
+
+        import_from_repo_file: f.import_from_repo_file.checked,
+        repo_file_path: f.repo_file_path.value.trim(),
+
+        webhook_enabled: f.webhook_enabled.checked,
+        webhook_secret: f.webhook_secret.value.trim(),
+        webhook_branch_only: f.webhook_branch_only.checked,
       }),
     });
     status.textContent = "Saved.";
@@ -357,6 +375,98 @@ document.getElementById("caddy-fix-perms").addEventListener("click", async () =>
   const dir = (f.caddy_root.value.trim() || "the resolved repo path");
   if (!window.confirm(`Walk ${dir} and apply chmod (and chown if a user/group is set)?`)) return;
   await caddyAction(`/api/apps/${id}/caddy/fix-permissions`, "Fix permissions");
+});
+
+// ---------- repo-file import ----------
+document.getElementById("repofile-preview").addEventListener("click", async () => {
+  const status = document.getElementById("repofile-status");
+  const out = document.getElementById("repofile-output");
+  status.textContent = "Reading…";
+  try {
+    const r = await api(`/api/apps/${id}/repo-file`);
+    if (!r.exists) {
+      status.textContent = `Not found: ${r.path} (${r.error || "no file"})`;
+      out.textContent = "—";
+      return;
+    }
+    status.textContent = `Found ${r.path}.`;
+    out.textContent = JSON.stringify(r.imported, null, 2);
+  } catch (e) {
+    status.textContent = "Error: " + e.message;
+  }
+});
+document.getElementById("repofile-import").addEventListener("click", async () => {
+  const status = document.getElementById("repofile-status");
+  const out = document.getElementById("repofile-output");
+  status.textContent = "Importing…";
+  try {
+    const r = await api(`/api/apps/${id}/repo-file/import`, { method: "POST" });
+    if (!r.ok) {
+      status.textContent = `Import failed: ${r.error || "see output"}`;
+      out.textContent = r.error || "";
+      return;
+    }
+    status.textContent = `Imported from ${r.path}.`;
+    await loadApp();
+  } catch (e) {
+    status.textContent = "Error: " + e.message;
+  }
+});
+document.getElementById("show-repo-file-schema").addEventListener("click", (ev) => {
+  ev.preventDefault();
+  const out = document.getElementById("repofile-output");
+  out.textContent = SAMPLE_REPO_FILE;
+});
+
+const SAMPLE_REPO_FILE = `// Drop this at the repo root as .servergitupdater.json. Every key is
+// optional; missing keys leave the app's existing value alone. Strings
+// support {port}, {repo_path} and {name} placeholders where the
+// matching server-side field does.
+{
+  "auto_build_enabled": true,
+  "build_command": "go",
+  "build_args": ["build", "-o", "{repo_path}/{name}", "./..."],
+
+  "app_port": 8081,
+  "port_flag": "-port",
+
+  "service_manage_enabled": true,
+  "service_name": "myapp",
+  "service_scope": "user",
+  "service_exec_args": ["--config", "{repo_path}/config.toml"],
+  "service_restart": "on-failure",
+
+  "caddy_enabled": true,
+  "caddy_auto_apply": true,
+  "caddy_mode": "proxy",
+  "caddy_domain": "myapp.example.com",
+  "caddy_upstream": "127.0.0.1:{port}"
+}`;
+
+// ---------- webhook ----------
+document.getElementById("webhook-regen").addEventListener("click", async () => {
+  const status = document.getElementById("webhook-status");
+  if (!window.confirm("Generate a new secret? Any existing GitHub webhook configured with the old secret will stop working until you update it.")) return;
+  status.textContent = "Generating…";
+  try {
+    const r = await api(`/api/apps/${id}/webhook/regenerate`, { method: "POST" });
+    document.getElementById("webhook-secret").value = r.webhook_secret;
+    status.textContent = "New secret generated and saved. Update your GitHub webhook to match.";
+  } catch (e) {
+    status.textContent = "Error: " + e.message;
+  }
+});
+document.getElementById("webhook-copy").addEventListener("click", async () => {
+  const status = document.getElementById("webhook-status");
+  const url = document.getElementById("webhook-url").value;
+  const secret = document.getElementById("webhook-secret").value || "(secret already saved on the server; click Generate new secret if you've lost it)";
+  const text = `URL:    ${url}\nSecret: ${secret}\nEvents: push\nFormat: application/json`;
+  try {
+    await navigator.clipboard.writeText(text);
+    status.textContent = "Copied to clipboard.";
+  } catch (e) {
+    status.textContent = "Couldn't access clipboard: " + e.message;
+  }
 });
 
 await Promise.all([loadApp(), loadServerHint()]);

@@ -66,6 +66,13 @@ type appPayload struct {
 	CaddyFilesGroup    string   `json:"caddy_files_group"`
 	CaddyFilesDirMode  string   `json:"caddy_files_dir_mode"`
 	CaddyFilesFileMode string   `json:"caddy_files_file_mode"`
+
+	ImportFromRepoFile bool   `json:"import_from_repo_file"`
+	RepoFilePath       string `json:"repo_file_path"`
+
+	WebhookEnabled    bool   `json:"webhook_enabled"`
+	WebhookSecret     string `json:"webhook_secret"`
+	WebhookBranchOnly bool   `json:"webhook_branch_only"`
 }
 
 func (p appPayload) intoApp(target *config.App) {
@@ -110,6 +117,17 @@ func (p appPayload) intoApp(target *config.App) {
 	target.CaddyFilesGroup = strings.TrimSpace(p.CaddyFilesGroup)
 	target.CaddyFilesDirMode = strings.TrimSpace(p.CaddyFilesDirMode)
 	target.CaddyFilesFileMode = strings.TrimSpace(p.CaddyFilesFileMode)
+	target.ImportFromRepoFile = p.ImportFromRepoFile
+	if rp := strings.TrimSpace(p.RepoFilePath); rp != "" {
+		target.RepoFilePath = rp
+	}
+	target.WebhookEnabled = p.WebhookEnabled
+	// Don't overwrite the secret with empty (UI sends empty when the user
+	// hasn't typed/regenerated). Treat empty as "leave as-is".
+	if s := strings.TrimSpace(p.WebhookSecret); s != "" {
+		target.WebhookSecret = s
+	}
+	target.WebhookBranchOnly = p.WebhookBranchOnly
 }
 
 func appView(a config.App) appPayload {
@@ -155,6 +173,11 @@ func appView(a config.App) appPayload {
 		CaddyFilesGroup:      a.CaddyFilesGroup,
 		CaddyFilesDirMode:    a.CaddyFilesDirMode,
 		CaddyFilesFileMode:   a.CaddyFilesFileMode,
+		ImportFromRepoFile:   a.ImportFromRepoFile,
+		RepoFilePath:         a.RepoFilePath,
+		WebhookEnabled:       a.WebhookEnabled,
+		WebhookSecret:        a.WebhookSecret,
+		WebhookBranchOnly:    a.WebhookBranchOnly,
 	}
 }
 

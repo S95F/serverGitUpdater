@@ -17,6 +17,7 @@ import (
 	"github.com/s95f/servergitupdater/internal/build"
 	"github.com/s95f/servergitupdater/internal/caddy"
 	"github.com/s95f/servergitupdater/internal/config"
+	"github.com/s95f/servergitupdater/internal/repofile"
 	"github.com/s95f/servergitupdater/internal/service"
 	"github.com/s95f/servergitupdater/internal/tmpl"
 )
@@ -216,6 +217,19 @@ func (u *Updater) RunUpdate(ctx context.Context, appID, source string) (LogEntry
 
 	newHead, _ := runGit(ctx, app, "rev-parse", "HEAD")
 	entry.NewHead = strings.TrimSpace(newHead)
+
+	if app.ImportFromRepoFile {
+		f, full, ferr := repofile.Read(app.RepoPath, app.RepoFilePath)
+		switch {
+		case errors.Is(ferr, repofile.ErrNotFound):
+			fmt.Fprintf(&buf, "# repo config file %s not found; skipping import\n", full)
+		case ferr != nil:
+			fmt.Fprintf(&buf, "# repo config file %s: %v\n", full, ferr)
+		default:
+			repofile.Apply(&app, f)
+			fmt.Fprintf(&buf, "# imported runtime overrides from %s\n", full)
+		}
+	}
 
 	vars := tmpl.Vars{Port: app.AppPort, RepoPath: app.RepoPath, Name: app.ServiceName}
 

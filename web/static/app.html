@@ -93,10 +93,32 @@
             </label>
           </div>
 
+          <fieldset>
+            <legend>Auto-import config from repo</legend>
+            <label class="checkbox">
+              <input type="checkbox" name="import_from_repo_file">
+              <span>After each successful pull, read this file and override build / service / caddy settings for the run</span>
+            </label>
+            <label>Repo config file path (relative to the repo)
+              <input type="text" name="repo_file_path" placeholder=".servergitupdater.json">
+            </label>
+            <p class="muted small">Lets a project ship its own deploy config. <a href="#" id="show-repo-file-schema">Show schema</a></p>
+            <div class="row">
+              <button type="button" id="repofile-preview" class="ghost">Preview from repo</button>
+              <button type="button" id="repofile-import" class="primary">Import &amp; save</button>
+            </div>
+            <p id="repofile-status" class="muted small">—</p>
+            <details>
+              <summary>Last preview / import output</summary>
+              <pre id="repofile-output">—</pre>
+            </details>
+          </fieldset>
+
           <div class="tabs" role="tablist">
             <button type="button" class="tab active" data-tab="build" role="tab">Build</button>
             <button type="button" class="tab" data-tab="service" role="tab">Service</button>
             <button type="button" class="tab" data-tab="caddy" role="tab">Caddy</button>
+            <button type="button" class="tab" data-tab="webhook" role="tab">Webhook</button>
           </div>
 
           <div class="tab-panel" data-panel="build">
@@ -288,6 +310,34 @@
               <summary>Last Caddy action output</summary>
               <pre id="caddy-output">—</pre>
             </details>
+          </div>
+
+          <div class="tab-panel" data-panel="webhook" hidden>
+            <p class="muted small">
+              Receives HTTP webhooks (e.g. from GitHub) and triggers a manual-style update. Verified with HMAC-SHA256 in the standard <code>X-Hub-Signature-256</code> header.
+            </p>
+            <label class="checkbox">
+              <input type="checkbox" name="webhook_enabled">
+              <span>Enable inbound webhook for this app</span>
+            </label>
+            <label class="checkbox">
+              <input type="checkbox" name="webhook_branch_only">
+              <span>Only act on pushes to the tracked branch (ignore other refs)</span>
+            </label>
+            <label>Webhook URL (paste into GitHub repo → Settings → Webhooks)
+              <input type="text" id="webhook-url" readonly>
+            </label>
+            <label>Webhook secret
+              <input type="text" name="webhook_secret" id="webhook-secret" placeholder="(blank = leave existing secret unchanged)">
+            </label>
+            <div class="row">
+              <button type="button" id="webhook-regen" class="ghost">Generate new secret</button>
+              <button type="button" id="webhook-copy" class="ghost">Copy URL &amp; secret</button>
+            </div>
+            <p class="muted small">
+              GitHub setup: Content type <code>application/json</code>; Secret = above; Events = <em>Just the push event</em>; Active.
+            </p>
+            <p id="webhook-status" class="muted small">—</p>
           </div>
 
           <div class="row sticky-actions">

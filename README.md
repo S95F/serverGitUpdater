@@ -177,6 +177,11 @@ It has three layers:
 | `caddy_files_group` | empty | File-server mode: group to chown served files to (optional). |
 | `caddy_files_dir_mode` | `0755` | File-server mode: directory mode (octal) applied by **Fix permissions**. |
 | `caddy_files_file_mode` | `0644` | File-server mode: file mode (octal) applied by **Fix permissions**. |
+| `import_from_repo_file` | `false` | After each successful pull, read the in-repo config file and override build/service/caddy settings for that pipeline run. |
+| `repo_file_path` | `.servergitupdater.json` | Path of the in-repo config file, relative to the working copy. |
+| `webhook_enabled` | `false` | Accept inbound POSTs at `/api/apps/{id}/webhook` to trigger updates. |
+| `webhook_secret` | empty | Shared secret for HMAC-SHA256 signature verification. Generate from the UI or set manually. |
+| `webhook_branch_only` | `false` | Ignore webhook deliveries whose `ref` doesn't match `branch`. |
 
 ## What an update actually does
 
@@ -295,6 +300,91 @@ to see exactly what will be written before clicking **Install &amp; start**.
 > systemd service as the updater's user (and as `root` for system-scope
 > units if the updater has that privilege). Treat the admin login
 > accordingly and put the UI behind HTTPS.
+
+## In-repo config file
+
+A project can ship its own deploy settings alongside its source by
+checking in a `.servergitupdater.json` at the repo root (the path is
+configurable per-app as `repo_file_path`). Every key is optional;
+keys that are present override the matching app field for the pipeline
+run, keys that are absent leave the app's existing value alone.
+
+```json
+{
+  "auto_build_enabled": true,
+  "build_command": "go",
+  "build_args": ["build", "-o", "{repo_path}/{name}", "./..."],
+
+  "app_port": 8081,
+  "port_flag": "-port",
+
+  "service_manage_enabled": true,
+  "service_name": "myapp",
+  "service_scope": "user",
+  "service_exec_args": ["--config", "{repo_path}/config.toml"],
+  "service_restart": "on-failure",
+
+  "caddy_enabled": true,
+  "caddy_auto_apply": true,
+  "caddy_mode": "proxy",
+  "caddy_domain": "myapp.example.com",
+  "caddy_upstream": "127.0.0.1:{port}"
+}
+```
+
+Two ways to apply it:
+
+- **One-shot import**: on the per-app edit page click **Import &amp; save**
+  in the *Auto-import config from repo* fieldset. The values from the
+  file are merged into the persisted app and saved.
+- **Auto-import on every update**: toggle *After each successful pull,
+  read this file and override…* on. The updater re-reads the file at
+  the start of each pipeline (after the pull, before the build) and
+  applies the values for that run only — the saved app config is left
+  alone, so the file remains the single source of truth.
+
+The full set of accepted keys is the build / port / service / caddy
+fields documented in [the per-app table](#per-app-keys-each-entry-in-apps).
+Repository identity (`repo_path`, `clone_url`, `branch`, `remote`) and
+scheduling/webhook keys are server-side only and not honored from the
+file.
+
+## Inbound webhooks (auto-update on push)
+
+> GitHub doesn't push via WebSockets — it posts via HTTP webhooks.
+> serverGitUpdater receives those at a per-app endpoint and runs the
+> usual update pipeline.
+
+For each app you can enable a public endpoint at:
+
+```
+POST https://<your-server>/api/apps/{id}/webhook
+```
+
+Toggle **Enable inbound webhook for this app** in the **Webhook** tab,
+generate a secret, then copy the URL + secret into the GitHub repo's
+**Settings → Webhooks → Add webhook**:
+
+- Payload URL: the URL above
+- Content type: `application/json`
+- Secret: the generated secret
+- Events: *Just the push event* (or whatever subset you want)
+- Active: yes
+
+Each delivery is verified with HMAC-SHA256 against the
+`X-Hub-Signature-256` header. Mismatches return 401 and are logged.
+Successful deliveries enqueue a `RunUpdate` (recorded as `source:
+"webhook"` in the history) and respond `{"ok": true, "queued": true}`.
+GitHub's `ping` event is acknowledged with `{"ok": true, "pong": true}`.
+
+If `webhook_branch_only` is on, deliveries whose `ref` field doesn't
+match `refs/heads/<branch>` are acknowledged but skipped — useful when
+you only deploy `main` from a multi-branch repo.
+
+The endpoint **does not** require login or CSRF; it's secured by HMAC
+alone. Keep the secret out of version control. Behind a reverse proxy,
+make sure the proxy preserves the request body unchanged so the HMAC
+verifies.
 
 ## Caddy
 
@@ -488,7 +578,8 @@ The app never sees or stores Git credentials.
 │   ├── build/               toolchain detection (go/cargo/make/npm) + runner
 │   ├── caddy/               Caddyfile snippet renderer + reload wrapper
 │   ├── config/              JSON config load/save with atomic replace
-│   ├── git/                 update runner + scheduler + JSONL log
+│   ├── git/                 update runner + scheduler + JSONL log + clone
+│   ├── repofile/            .servergitupdater.json reader / Apply()
 │   ├── server/              HTTP routes, middleware, handlers
 │   ├── service/             systemd unit generator + systemctl wrapper
 │   └── tmpl/                {port}/{repo_path}/{name} substitution helper

@@ -86,6 +86,12 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/apps/{id}/caddy/reload", s.requireAuthCSRF(s.handleCaddyReload))
 	mux.HandleFunc("POST /api/apps/{id}/caddy/fix-permissions", s.requireAuthCSRF(s.handleCaddyFixPermissions))
 
+	// repo-file import (auth) and inbound webhook (public, HMAC-verified)
+	mux.HandleFunc("GET /api/apps/{id}/repo-file", s.requireAuth(s.handlePreviewConfig))
+	mux.HandleFunc("POST /api/apps/{id}/repo-file/import", s.requireAuthCSRF(s.handleImportConfig))
+	mux.HandleFunc("POST /api/apps/{id}/webhook/regenerate", s.requireAuthCSRF(s.handleWebhookRegen))
+	mux.HandleFunc("POST /api/apps/{id}/webhook", s.handleWebhook)
+
 	// admin
 	mux.HandleFunc("GET /api/admin/summary", s.requireAuth(s.handleAdminSummary))
 	mux.HandleFunc("GET /api/logs", s.requireAuth(s.handleLogs))

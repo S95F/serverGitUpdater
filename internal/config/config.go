@@ -68,6 +68,19 @@ type App struct {
 	CaddyFilesDirMode  string `json:"caddy_files_dir_mode,omitempty"`  // octal e.g. "0755"
 	CaddyFilesFileMode string `json:"caddy_files_file_mode,omitempty"` // octal e.g. "0644"
 
+	// Repo-file import. If ImportFromRepoFile is true, after every
+	// successful pull the updater reads RepoFilePath inside the working
+	// copy and overrides build/service/caddy fields for that pipeline run.
+	ImportFromRepoFile bool   `json:"import_from_repo_file,omitempty"`
+	RepoFilePath       string `json:"repo_file_path,omitempty"`
+
+	// Inbound webhook. When WebhookEnabled is true, POST /api/apps/{id}/webhook
+	// triggers a manual-style update. The body must be HMAC-SHA256 signed
+	// with WebhookSecret in the standard GitHub "X-Hub-Signature-256" header.
+	WebhookEnabled    bool   `json:"webhook_enabled,omitempty"`
+	WebhookSecret     string `json:"webhook_secret,omitempty"`
+	WebhookBranchOnly bool   `json:"webhook_branch_only,omitempty"`
+
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
@@ -313,6 +326,9 @@ func applyAppDefaults(a *App) {
 	}
 	if a.CaddyFilesFileMode == "" {
 		a.CaddyFilesFileMode = "0644"
+	}
+	if a.RepoFilePath == "" {
+		a.RepoFilePath = ".servergitupdater.json"
 	}
 }
 
