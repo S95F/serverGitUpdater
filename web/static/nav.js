@@ -50,6 +50,26 @@ export function fmtTime(s) {
   }
 }
 
+// systemPathWarning returns a HTML warning string when an absolute path
+// looks like it would land somewhere the updater process is unlikely to
+// own (root, /etc, /var, /usr, /sys, /proc, /boot, /root). Returns ""
+// when the path looks innocuous.
+export function systemPathWarning(p) {
+  if (!p || !p.startsWith("/")) return "";
+  const normalized = p.replace(/\/+/g, "/");
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length === 0) return ""; // bare "/" — silly but obvious
+  if (parts.length === 1) {
+    return `<strong>Warning:</strong> <code>${p}</code> sits at the filesystem root. Most processes can't write here. Set <strong>repos_dir</strong> in Settings and use a relative path like <code>${parts[0]}</code>.`;
+  }
+  const top = "/" + parts[0];
+  const systemRoots = ["/etc", "/var", "/usr", "/sys", "/proc", "/boot", "/root", "/sbin", "/bin", "/lib", "/lib64"];
+  if (systemRoots.includes(top)) {
+    return `<strong>Warning:</strong> <code>${p}</code> is inside <code>${top}</code>, which is usually owned by root. The clone or update will likely fail with "Permission denied".`;
+  }
+  return "";
+}
+
 export function fmtRelative(s) {
   if (!s) return "never";
   const d = new Date(s);

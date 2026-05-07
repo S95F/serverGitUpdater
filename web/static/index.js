@@ -1,4 +1,4 @@
-import { api, fmtRelative, el, renderTopbar } from "/static/nav.js";
+import { api, fmtRelative, el, renderTopbar, systemPathWarning } from "/static/nav.js";
 
 await renderTopbar("apps");
 
@@ -23,7 +23,8 @@ function updateNewRepoHint() {
     return;
   }
   if (p.startsWith("/")) {
-    newRepoHint.innerHTML = `Absolute path: <code>${p}</code>`;
+    const warn = systemPathWarning(p);
+    newRepoHint.innerHTML = `Absolute path: <code>${p}</code>` + (warn ? `<br>${warn}` : "");
     return;
   }
   if (!reposDir) {

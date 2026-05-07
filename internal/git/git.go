@@ -376,6 +376,29 @@ func (u *Updater) ReadLog(limit int, appID string) ([]LogEntry, error) {
 	return out, nil
 }
 
+// summariseGitError finds the most informative line in git's combined output
+// (typically a "fatal:" or "error:" line) and returns an error that wraps
+// the original status while leading with that line, so callers and the UI
+// surface the real cause instead of "exit status 128".
+func summariseGitError(orig error, output string) error {
+	var pick string
+	for _, line := range strings.Split(output, "\n") {
+		l := strings.TrimSpace(line)
+		if l == "" {
+			continue
+		}
+		low := strings.ToLower(l)
+		if strings.HasPrefix(low, "fatal:") || strings.HasPrefix(low, "error:") {
+			pick = l
+			break
+		}
+	}
+	if pick == "" {
+		return orig
+	}
+	return fmt.Errorf("%s (%v)", pick, orig)
+}
+
 // LastRun returns the most recent run time for an app, or zero if never run.
 func (u *Updater) LastRun(appID string) time.Time {
 	u.lastMu.Lock()
@@ -409,10 +432,22 @@ func (u *Updater) Clone(ctx context.Context, appID string) (string, error) {
 		return "", fmt.Errorf("destination already exists and is not empty: %s", dest)
 	}
 
-	if parent := filepath.Dir(dest); parent != "" && parent != "." && parent != "/" {
+	parent := filepath.Dir(dest)
+	if parent != "" && parent != "." {
 		if err := os.MkdirAll(parent, 0o755); err != nil {
-			return "", fmt.Errorf("mkdir %s: %w", parent, err)
+			return "", fmt.Errorf("cannot create parent %s: %w (set repos_dir in Settings to a directory the updater can write to)", parent, err)
 		}
+	}
+	// Pre-flight: try to create the destination ourselves so we can surface
+	// a clear error before invoking git. git's own message ("could not
+	// create work tree dir 'X': Permission denied") doesn't tell the user
+	// that the fix is to set repos_dir or pick a writable path.
+	if err := os.Mkdir(dest, 0o755); err != nil && !os.IsExist(err) {
+		hint := ""
+		if os.IsPermission(err) {
+			hint = " — the updater process can't write to " + parent + "; set repos_dir in Settings to a directory you own, or pick a writable repo_path"
+		}
+		return "", fmt.Errorf("cannot create %s: %w%s", dest, err, hint)
 	}
 
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
@@ -425,7 +460,11 @@ func (u *Updater) Clone(ctx context.Context, appID string) (string, error) {
 	out, err := cmd.CombinedOutput()
 	fmt.Fprintf(&buf, "$ git %s\n%s", strings.Join(args, " "), string(out))
 	if err != nil {
-		return buf.String(), err
+		// Clean up the empty shell we created in pre-flight so retries work.
+		// os.Remove only succeeds if dest is empty, so partial clones are
+		// preserved for the user to inspect.
+		_ = os.Remove(dest)
+		return buf.String(), summariseGitError(err, string(out))
 	}
 
 	// If the configured branch differs from whatever the remote's default

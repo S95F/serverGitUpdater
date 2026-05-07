@@ -1,4 +1,4 @@
-import { api, fmtTime, fmtRelative, renderTopbar } from "/static/nav.js";
+import { api, fmtTime, fmtRelative, renderTopbar, systemPathWarning } from "/static/nav.js";
 
 await renderTopbar("apps");
 
@@ -60,7 +60,8 @@ function updateRepoResolution() {
     return;
   }
   if (isAbs(p)) {
-    el.innerHTML = `Absolute path: <code>${p}</code> (used as-is, ignoring repos_dir)`;
+    const warn = systemPathWarning(p);
+    el.innerHTML = `Absolute path: <code>${p}</code> (used as-is, ignoring repos_dir)` + (warn ? `<br>${warn}` : "");
     return;
   }
   if (!reposDir) {
