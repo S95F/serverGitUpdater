@@ -65,6 +65,38 @@ a:hover { text-decoration: underline; }
 .nav-link:hover { background: var(--panel-2); color: var(--text); text-decoration: none; }
 .nav-link.active { color: var(--text); background: var(--panel-2); }
 
+.nav-dropdown { position: relative; }
+.nav-dropdown-trigger {
+  background: transparent;
+  border: 1px solid transparent;
+  font: inherit;
+  cursor: pointer;
+}
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  margin: 0;
+  padding: 0.3rem 0;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 220px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+  z-index: 50;
+}
+.dropdown-menu li { margin: 0; }
+.dropdown-item {
+  display: block;
+  padding: 0.5rem 0.9rem;
+  color: var(--text);
+}
+.dropdown-item:hover {
+  background: var(--panel-2);
+  text-decoration: none;
+}
+
 /* ---------- pages ---------- */
 .page {
   padding: 1.25rem 1.5rem;

@@ -2,27 +2,28 @@ import { api, renderTopbar } from "/static/nav.js";
 
 await renderTopbar("settings");
 
-const picker = document.getElementById("section-picker");
 const sections = document.querySelectorAll(".section");
+const titles = {
+  server: "Server configuration",
+  password: "Reset password",
+};
+const titleEl = document.getElementById("settings-title");
+const hintEl = document.getElementById("settings-hint");
 
 function showSection(name) {
+  const valid = sections && [...sections].some((s) => s.dataset.section === name) ? name : "server";
   for (const s of sections) {
-    s.hidden = s.dataset.section !== name;
+    s.hidden = s.dataset.section !== valid;
   }
+  titleEl.textContent = `Settings — ${titles[valid] || valid}`;
+  hintEl.hidden = true;
 }
 
-picker.addEventListener("change", () => {
-  const v = picker.value;
-  showSection(v);
-  // remember the choice in the URL hash so refreshes stay on the same section
-  history.replaceState(null, "", `#${v}`);
-});
-
-const initial = (window.location.hash || "#password").slice(1);
-if ([...picker.options].some((o) => o.value === initial)) {
-  picker.value = initial;
+function currentSectionFromHash() {
+  return (window.location.hash || "#server").slice(1);
 }
-showSection(picker.value);
+showSection(currentSectionFromHash());
+window.addEventListener("hashchange", () => showSection(currentSectionFromHash()));
 
 // ---------- password ----------
 

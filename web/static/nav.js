@@ -110,6 +110,41 @@ export function el(tag, attrs = {}, children = []) {
   return e;
 }
 
+function dropdown(label, items, isActive) {
+  const trigger = el("button", {
+    type: "button",
+    class: "nav-link nav-dropdown-trigger" + (isActive ? " active" : ""),
+    "aria-haspopup": "menu",
+    "aria-expanded": "false",
+  }, [label, " ▾"]);
+
+  const menu = el("ul", { class: "dropdown-menu", role: "menu", hidden: true });
+  for (const it of items) {
+    menu.appendChild(el("li", { role: "none" }, [
+      el("a", { class: "dropdown-item", href: it.href, role: "menuitem" }, it.label),
+    ]));
+  }
+
+  const close = () => {
+    if (!menu.hidden) {
+      menu.hidden = true;
+      trigger.setAttribute("aria-expanded", "false");
+    }
+  };
+
+  trigger.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    const open = trigger.getAttribute("aria-expanded") === "true";
+    trigger.setAttribute("aria-expanded", String(!open));
+    menu.hidden = open;
+  });
+  menu.addEventListener("click", (ev) => ev.stopPropagation());
+  document.addEventListener("click", close);
+  document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") close(); });
+
+  return el("div", { class: "nav-dropdown" }, [trigger, menu]);
+}
+
 export async function renderTopbar(active) {
   const bar = document.getElementById("topbar");
   if (!bar) return;
@@ -130,7 +165,10 @@ export async function renderTopbar(active) {
     el("nav", { class: "nav-links" }, [
       link("/", "Apps"),
       link("/admin", "Administration"),
-      link("/settings", "Settings"),
+      dropdown("Settings", [
+        { label: "Server configuration", href: "/settings#server" },
+        { label: "Reset password", href: "/settings#password" },
+      ], active === "settings"),
     ]),
   ]));
 

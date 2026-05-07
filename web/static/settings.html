@@ -11,19 +11,12 @@
   <header id="topbar" class="topbar"></header>
 
   <main class="page narrow">
-    <h1>Settings</h1>
+    <div class="page-head">
+      <h1 id="settings-title">Settings</h1>
+      <p class="muted small" id="settings-hint">Pick a section from the <strong>Settings</strong> menu in the header.</p>
+    </div>
 
-    <section class="card">
-      <label class="inline">
-        <span>Section</span>
-        <select id="section-picker">
-          <option value="password">Reset password</option>
-          <option value="server">Server configuration</option>
-        </select>
-      </label>
-    </section>
-
-    <section class="card section" data-section="password">
+    <section class="card section" data-section="password" hidden>
       <h2>Reset password</h2>
       <form id="password-form">
         <label>Current password
@@ -37,7 +30,7 @@
       </form>
     </section>
 
-    <section class="card section" data-section="server" hidden>
+    <section class="card section" data-section="server">
       <h2>Server configuration</h2>
       <p class="muted small">
         These settings apply server-wide. Changes to <code>listen_addr</code>,
