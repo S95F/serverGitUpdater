@@ -25,6 +25,13 @@ html, body {
   line-height: 1.45;
 }
 
+/* The HTML `hidden` attribute is defined as `display: none` via the
+   user-agent stylesheet (lowest specificity). Several rules in this
+   file set display:flex/grid on classes (e.g. .tab-panel), which would
+   otherwise win and keep "hidden" elements visible. Force the
+   semantically-correct behaviour. */
+[hidden] { display: none !important; }
+
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
