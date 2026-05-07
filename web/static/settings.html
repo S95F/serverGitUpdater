@@ -57,8 +57,26 @@
           <input type="text" name="repos_dir" placeholder="/srv/apps">
         </label>
         <p class="muted small">
-          When set, any app whose <code>repo_path</code> is relative is joined
-          with this directory. Absolute paths are used as-is.
+          When set, every per-app <code>repo_path</code> is interpreted as
+          relative to this directory (leading slashes and <code>..</code>
+          segments are stripped, so apps can't escape the namespace).
+        </p>
+        <label>Public base URL
+          <input type="text" name="public_base_url" placeholder="https://updater.example.com">
+        </label>
+        <p class="muted small">
+          Externally-reachable URL of this binary. Used to build the
+          webhook URLs registered with GitHub. Required for
+          <strong>Auto-register on GitHub</strong>.
+        </p>
+        <label>GitHub token
+          <input type="password" name="github_token" autocomplete="off" placeholder="leave blank to keep existing">
+        </label>
+        <p id="github-token-state" class="muted small">—</p>
+        <p class="muted small">
+          Personal Access Token with <code>admin:repo_hook</code> scope, or a
+          fine-grained PAT scoped to the repo with <em>Webhooks: Read and
+          write</em>. SSH keys don't work for the REST API.
         </p>
         <div class="two-col">
           <label>Update log path

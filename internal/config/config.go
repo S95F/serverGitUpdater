@@ -81,6 +81,14 @@ type App struct {
 	WebhookSecret     string `json:"webhook_secret,omitempty"`
 	WebhookBranchOnly bool   `json:"webhook_branch_only,omitempty"`
 
+	// WebhookAutoRegister opts into registering / updating / removing
+	// the webhook on the upstream provider (currently only GitHub) via
+	// its REST API, using the server-wide GitHubToken.
+	WebhookAutoRegister bool  `json:"webhook_auto_register,omitempty"`
+	// WebhookRemoteID is the upstream-assigned hook ID once registered.
+	// Managed by the server; not user-editable from the UI.
+	WebhookRemoteID int64 `json:"webhook_remote_id,omitempty"`
+
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
@@ -102,6 +110,16 @@ type Snapshot struct {
 	// Lets you keep all working copies under one root (e.g. "/srv/apps")
 	// and reference them by name in each app's RepoPath.
 	ReposDir string `json:"repos_dir,omitempty"`
+
+	// PublicBaseURL is the externally-reachable base URL of this binary
+	// (e.g. "https://updater.example.com"). Used to construct webhook
+	// URLs that we register with GitHub. Required for webhook_auto_register.
+	PublicBaseURL string `json:"public_base_url,omitempty"`
+
+	// GitHubToken is a Personal Access Token with admin:repo_hook scope
+	// (or a fine-grained PAT with Webhooks: Read+Write). Used to create,
+	// update and delete repo webhooks on GitHub.
+	GitHubToken string `json:"github_token,omitempty"`
 
 	LogPath    string `json:"log_path"`
 	MaxLogRows int    `json:"max_log_rows"`

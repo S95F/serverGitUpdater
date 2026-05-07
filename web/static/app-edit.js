@@ -122,11 +122,16 @@ async function loadApp() {
 
   f.webhook_enabled.checked = !!a.webhook_enabled;
   f.webhook_branch_only.checked = !!a.webhook_branch_only;
+  f.webhook_auto_register.checked = !!a.webhook_auto_register;
   f.webhook_secret.value = ""; // never echo persisted secret in the input
   document.getElementById("webhook-secret").placeholder = a.webhook_secret
     ? "(secret on file — leave blank to keep, type or generate to replace)"
     : "(no secret yet — type one or click Generate new secret)";
   document.getElementById("webhook-url").value = `${window.location.origin}/api/apps/${id}/webhook`;
+  const remoteEl = document.getElementById("webhook-remote");
+  remoteEl.textContent = a.webhook_remote_id
+    ? `Registered on GitHub as hook ID ${a.webhook_remote_id}.`
+    : "Not registered on GitHub yet (toggle Auto-register and save, or click Sync now).";
 
   applyCaddyMode();
 }
@@ -232,6 +237,7 @@ async function saveConfig(ev) {
         webhook_enabled: f.webhook_enabled.checked,
         webhook_secret: f.webhook_secret.value.trim(),
         webhook_branch_only: f.webhook_branch_only.checked,
+        webhook_auto_register: f.webhook_auto_register.checked,
       }),
     });
     status.textContent = "Saved.";
@@ -466,6 +472,17 @@ document.getElementById("webhook-copy").addEventListener("click", async () => {
     status.textContent = "Copied to clipboard.";
   } catch (e) {
     status.textContent = "Couldn't access clipboard: " + e.message;
+  }
+});
+document.getElementById("webhook-sync").addEventListener("click", async () => {
+  const status = document.getElementById("webhook-status");
+  status.textContent = "Syncing with GitHub…";
+  try {
+    const r = await api(`/api/apps/${id}/webhook/sync`, { method: "POST" });
+    status.textContent = r.ok ? `OK — ${r.message || "synced"}` : `Failed: ${r.error || "see server logs"}`;
+    await loadApp(); // pick up the new webhook_remote_id
+  } catch (e) {
+    status.textContent = "Error: " + e.message;
   }
 });
 

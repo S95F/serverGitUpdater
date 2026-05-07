@@ -128,6 +128,8 @@ It has three layers:
 | `cookie_secure` | `false` | Set to `true` when serving over HTTPS (directly or behind a TLS proxy). |
 | `username` / `password_hash` | — | Set via `--init-user` or the Settings page. |
 | `repos_dir` | empty | If set, acts as a hard namespace: every per-app `repo_path` is interpreted as relative to it (leading slashes and `..` segments are stripped so you can't escape the namespace). When empty, an absolute `repo_path` is used as-is and a relative one is resolved against the binary's working directory. |
+| `public_base_url` | empty | Externally-reachable base URL of this binary, e.g. `https://updater.example.com`. Used to build the webhook URLs registered with GitHub. |
+| `github_token` | empty | Personal Access Token with `admin:repo_hook` scope (or fine-grained PAT with *Webhooks: Read and write*). Used to create / update / delete repo webhooks. **SSH keys don't grant API access**, so you have to issue a token even if your git remotes are over SSH. |
 | `log_path` | `updates.log` | JSONL file; one entry per run, tagged with `app_id`. |
 | `max_log_rows` | `500` | Rows fetched into the UI by default. |
 
@@ -182,6 +184,8 @@ It has three layers:
 | `webhook_enabled` | `false` | Accept inbound POSTs at `/api/apps/{id}/webhook` to trigger updates. |
 | `webhook_secret` | empty | Shared secret for HMAC-SHA256 signature verification. Generate from the UI or set manually. |
 | `webhook_branch_only` | `false` | Ignore webhook deliveries whose `ref` doesn't match `branch`. |
+| `webhook_auto_register` | `false` | When on, the server creates / updates / deletes the webhook on GitHub via the REST API every time the app config is saved or the binary starts. Requires `github_token` and `public_base_url` server-side. |
+| `webhook_remote_id` | `0` | GitHub-assigned hook ID once registered. Server-managed; don't edit. |
 
 ## What an update actually does
 
@@ -386,6 +390,39 @@ alone. Keep the secret out of version control. Behind a reverse proxy,
 make sure the proxy preserves the request body unchanged so the HMAC
 verifies.
 
+### Auto-registering on GitHub
+
+You can let the binary register the webhook on GitHub for you, end to
+end:
+
+1. In **Settings → Server configuration**, fill in:
+   - **Public base URL**: e.g. `https://updater.example.com`. The binary
+     uses this to build the webhook URL it sends to GitHub. The token
+     and public URL are server-wide; one of each is enough for all apps.
+   - **GitHub token**: a Personal Access Token with `admin:repo_hook`
+     scope, or a fine-grained PAT scoped to your repo(s) with *Webhooks:
+     Read and write*. SSH keys are **not** sufficient — they're a
+     separate auth mechanism, only valid for git operations.
+2. On the per-app **Webhook** tab, set a `clone_url` that points at
+   GitHub (HTTPS or SSH form), tick **Enable inbound webhook** and
+   **Auto-register on GitHub**, click **Generate new secret**, and
+   **Save settings**.
+
+The binary then:
+
+- On save, creates the hook on GitHub (`POST /repos/{owner}/{repo}/hooks`)
+  and stores the returned hook ID in `webhook_remote_id`.
+- On a later save it `PATCH`es the existing hook to keep URL / events /
+  secret / `active` in sync.
+- Toggling `webhook_enabled` off (with auto-register still on) deletes
+  the hook on GitHub.
+- On every server start, a reconcile pass runs the same logic for every
+  app with `webhook_auto_register`, so a freshly-restored config gets
+  re-registered automatically.
+
+A **Sync now** button on the Webhook tab triggers the same logic on
+demand and surfaces the GitHub API response.
+
 ## Caddy
 
 The **Caddy** tab on the per-app edit page writes a Caddyfile snippet for
@@ -579,6 +616,7 @@ The app never sees or stores Git credentials.
 │   ├── caddy/               Caddyfile snippet renderer + reload wrapper
 │   ├── config/              JSON config load/save with atomic replace
 │   ├── git/                 update runner + scheduler + JSONL log + clone
+│   ├── githubhook/          minimal GitHub repo-webhooks REST client
 │   ├── repofile/            .servergitupdater.json reader / Apply()
 │   ├── server/              HTTP routes, middleware, handlers
 │   ├── service/             systemd unit generator + systemctl wrapper

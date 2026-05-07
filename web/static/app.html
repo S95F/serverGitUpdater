@@ -324,6 +324,11 @@
               <input type="checkbox" name="webhook_branch_only">
               <span>Only act on pushes to the tracked branch (ignore other refs)</span>
             </label>
+            <label class="checkbox">
+              <input type="checkbox" name="webhook_auto_register">
+              <span>Auto-register on GitHub (uses the server-wide GitHub token)</span>
+            </label>
+            <p id="webhook-remote" class="muted small">—</p>
             <label>Webhook URL (paste into GitHub repo → Settings → Webhooks)
               <input type="text" id="webhook-url" readonly>
             </label>
@@ -333,9 +338,11 @@
             <div class="row">
               <button type="button" id="webhook-regen" class="ghost">Generate new secret</button>
               <button type="button" id="webhook-copy" class="ghost">Copy URL &amp; secret</button>
+              <button type="button" id="webhook-sync" class="ghost">Sync now</button>
             </div>
             <p class="muted small">
-              GitHub setup: Content type <code>application/json</code>; Secret = above; Events = <em>Just the push event</em>; Active.
+              <strong>Manual setup:</strong> Content type <code>application/json</code>; Secret = above; Events = <em>Just the push event</em>; Active.<br>
+              <strong>Auto-register:</strong> needs a GitHub token + Public base URL in Settings → Server configuration. Saving the form (or clicking Sync now) creates / updates / removes the hook on GitHub.
             </p>
             <p id="webhook-status" class="muted small">—</p>
           </div>

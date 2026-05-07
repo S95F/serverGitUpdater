@@ -90,6 +90,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/apps/{id}/repo-file", s.requireAuth(s.handlePreviewConfig))
 	mux.HandleFunc("POST /api/apps/{id}/repo-file/import", s.requireAuthCSRF(s.handleImportConfig))
 	mux.HandleFunc("POST /api/apps/{id}/webhook/regenerate", s.requireAuthCSRF(s.handleWebhookRegen))
+	mux.HandleFunc("POST /api/apps/{id}/webhook/sync", s.requireAuthCSRF(s.handleWebhookSync))
 	mux.HandleFunc("POST /api/apps/{id}/webhook", s.handleWebhook)
 
 	// admin
@@ -295,27 +296,32 @@ type passwordReq struct {
 // serverPayload is the editable subset of Snapshot exposed via /api/server.
 // session_secret, username and password_hash are intentionally omitted.
 type serverPayload struct {
-	ListenAddr      string `json:"listen_addr"`
-	TLSCertFile     string `json:"tls_cert_file"`
-	TLSKeyFile      string `json:"tls_key_file"`
-	SessionTTLHours int    `json:"session_ttl_hours"`
-	CookieSecure    bool   `json:"cookie_secure"`
-	ReposDir        string `json:"repos_dir"`
-	LogPath         string `json:"log_path"`
-	MaxLogRows      int    `json:"max_log_rows"`
+	ListenAddr       string `json:"listen_addr"`
+	TLSCertFile      string `json:"tls_cert_file"`
+	TLSKeyFile       string `json:"tls_key_file"`
+	SessionTTLHours  int    `json:"session_ttl_hours"`
+	CookieSecure     bool   `json:"cookie_secure"`
+	ReposDir         string `json:"repos_dir"`
+	PublicBaseURL    string `json:"public_base_url"`
+	LogPath          string `json:"log_path"`
+	MaxLogRows       int    `json:"max_log_rows"`
+	GitHubToken      string `json:"github_token,omitempty"`       // write-only; never echoed back
+	GitHubTokenIsSet bool   `json:"github_token_is_set,omitempty"` // read-only flag
 }
 
 func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
 	snap := s.cfg.Snapshot()
 	writeJSON(w, http.StatusOK, serverPayload{
-		ListenAddr:      snap.ListenAddr,
-		TLSCertFile:     snap.TLSCertFile,
-		TLSKeyFile:      snap.TLSKeyFile,
-		SessionTTLHours: snap.SessionTTLHours,
-		CookieSecure:    snap.CookieSecure,
-		ReposDir:        snap.ReposDir,
-		LogPath:         snap.LogPath,
-		MaxLogRows:      snap.MaxLogRows,
+		ListenAddr:       snap.ListenAddr,
+		TLSCertFile:      snap.TLSCertFile,
+		TLSKeyFile:       snap.TLSKeyFile,
+		SessionTTLHours:  snap.SessionTTLHours,
+		CookieSecure:     snap.CookieSecure,
+		ReposDir:         snap.ReposDir,
+		PublicBaseURL:    snap.PublicBaseURL,
+		LogPath:          snap.LogPath,
+		MaxLogRows:       snap.MaxLogRows,
+		GitHubTokenIsSet: snap.GitHubToken != "",
 	})
 }
 
@@ -343,8 +349,14 @@ func (s *Server) handleSetServer(w http.ResponseWriter, r *http.Request) {
 		c.SessionTTLHours = p.SessionTTLHours
 		c.CookieSecure = p.CookieSecure
 		c.ReposDir = strings.TrimSpace(p.ReposDir)
+		c.PublicBaseURL = strings.TrimSpace(p.PublicBaseURL)
 		c.LogPath = strings.TrimSpace(p.LogPath)
 		c.MaxLogRows = p.MaxLogRows
+		// GitHub token: empty means "leave existing" so the UI doesn't
+		// have to round-trip a sensitive secret through the form.
+		if t := strings.TrimSpace(p.GitHubToken); t != "" {
+			c.GitHubToken = t
+		}
 	}); err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "save failed")
 		return

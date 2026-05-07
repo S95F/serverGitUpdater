@@ -89,6 +89,10 @@ func main() {
 
 	updater.Start(ctx)
 
+	// Reconcile any per-app GitHub webhooks that opt into auto-registration.
+	// Best effort, async — we don't want to block startup on api.github.com.
+	srv.ReconcileWebhooks(ctx)
+
 	go func() {
 		logger.Info("listening", "addr", snap.ListenAddr, "tls", snap.TLSCertFile != "")
 		var err error

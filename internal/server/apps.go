@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -70,9 +71,11 @@ type appPayload struct {
 	ImportFromRepoFile bool   `json:"import_from_repo_file"`
 	RepoFilePath       string `json:"repo_file_path"`
 
-	WebhookEnabled    bool   `json:"webhook_enabled"`
-	WebhookSecret     string `json:"webhook_secret"`
-	WebhookBranchOnly bool   `json:"webhook_branch_only"`
+	WebhookEnabled      bool   `json:"webhook_enabled"`
+	WebhookSecret       string `json:"webhook_secret"`
+	WebhookBranchOnly   bool   `json:"webhook_branch_only"`
+	WebhookAutoRegister bool   `json:"webhook_auto_register"`
+	WebhookRemoteID     int64  `json:"webhook_remote_id"`
 }
 
 func (p appPayload) intoApp(target *config.App) {
@@ -128,6 +131,8 @@ func (p appPayload) intoApp(target *config.App) {
 		target.WebhookSecret = s
 	}
 	target.WebhookBranchOnly = p.WebhookBranchOnly
+	target.WebhookAutoRegister = p.WebhookAutoRegister
+	// WebhookRemoteID is server-managed; never set from the form.
 }
 
 func appView(a config.App) appPayload {
@@ -178,6 +183,8 @@ func appView(a config.App) appPayload {
 		WebhookEnabled:       a.WebhookEnabled,
 		WebhookSecret:        a.WebhookSecret,
 		WebhookBranchOnly:    a.WebhookBranchOnly,
+		WebhookAutoRegister:  a.WebhookAutoRegister,
+		WebhookRemoteID:      a.WebhookRemoteID,
 	}
 }
 
@@ -337,6 +344,20 @@ func (s *Server) handleUpdateApp(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	// If the app opts into auto-registration, reconcile the GitHub webhook
+	// in the background. We deliberately don't block the form save on a
+	// network round-trip to api.github.com.
+	if updated.WebhookAutoRegister {
+		go func(appID string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+			defer cancel()
+			if out, serr := s.SyncWebhook(ctx, appID); serr != nil {
+				s.log.Warn("webhook sync after save failed", "app", updated.Name, "err", serr)
+			} else {
+				s.log.Info("webhook sync after save", "app", updated.Name, "result", out)
+			}
+		}(updated.ID)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "app": appWithID(updated)})
 }
