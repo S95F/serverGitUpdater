@@ -17,6 +17,7 @@
     {
       "name": "myapp",
       "repo_path": "myapp",
+      "clone_url": "https://github.com/owner/myapp.git",
       "branch": "main",
       "remote": "origin",
       "git_env": [

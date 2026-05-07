@@ -43,8 +43,12 @@
       <label>Name
         <input type="text" name="name" required minlength="1" maxlength="63" placeholder="myapp">
       </label>
+      <label>Git clone URL (optional)
+        <input type="text" name="clone_url" placeholder="https://github.com/owner/repo.git">
+      </label>
+      <p class="muted small">If set, the server will clone the repo into the path below right after the app is created.</p>
       <label>Repository path
-        <input type="text" name="repo_path" placeholder="myapp or /srv/myapp">
+        <input type="text" name="repo_path" placeholder="myapp">
       </label>
       <p id="new-repo-hint" class="muted small">You can fill in the rest after the app is created.</p>
       <div class="row right">
@@ -52,6 +56,10 @@
         <button type="submit" class="primary">Create</button>
       </div>
       <p id="new-error" class="error" hidden></p>
+      <details id="new-clone-output-wrap" hidden>
+        <summary>Clone output</summary>
+        <pre id="new-clone-output">—</pre>
+      </details>
     </form>
   </dialog>
 

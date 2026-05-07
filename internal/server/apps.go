@@ -3,6 +3,8 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,6 +22,7 @@ type appPayload struct {
 	Name string `json:"name"`
 
 	RepoPath          string   `json:"repo_path"`
+	CloneURL          string   `json:"clone_url"`
 	Branch            string   `json:"branch"`
 	Remote            string   `json:"remote"`
 	PostUpdateCommand string   `json:"post_update_command"`
@@ -68,6 +71,7 @@ type appPayload struct {
 func (p appPayload) intoApp(target *config.App) {
 	target.Name = strings.TrimSpace(p.Name)
 	target.RepoPath = strings.TrimSpace(p.RepoPath)
+	target.CloneURL = strings.TrimSpace(p.CloneURL)
 	target.Branch = strings.TrimSpace(p.Branch)
 	target.Remote = strings.TrimSpace(p.Remote)
 	target.PostUpdateCommand = strings.TrimSpace(p.PostUpdateCommand)
@@ -112,6 +116,7 @@ func appView(a config.App) appPayload {
 	return appPayload{
 		Name:                 a.Name,
 		RepoPath:             a.RepoPath,
+		CloneURL:             a.CloneURL,
 		Branch:               a.Branch,
 		Remote:               a.Remote,
 		PostUpdateCommand:    a.PostUpdateCommand,
@@ -247,7 +252,35 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"app": appWithID(created)})
+	resp := map[string]any{"app": appWithID(created)}
+	// Auto-clone if requested. We don't fail the whole create on a clone
+	// failure; the app exists and the user can retry from the edit page.
+	if created.CloneURL != "" {
+		out, cerr := s.updater.Clone(r.Context(), created.ID)
+		resp["clone"] = map[string]any{"ok": cerr == nil, "output": out, "error": errStr(cerr)}
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleCloneApp(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if !config.IsValidID(id) {
+		writeJSONError(w, http.StatusBadRequest, "invalid app id")
+		return
+	}
+	out, err := s.updater.Clone(r.Context(), id)
+	resp := map[string]any{"ok": err == nil, "output": out}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func errStr(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }
 
 func (s *Server) handleGetApp(w http.ResponseWriter, r *http.Request) {
@@ -311,10 +344,23 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	st, err := s.updater.Status(r.Context(), a.ID)
+	exists := false
+	isGit := false
+	if a.RepoPath != "" {
+		if info, e := os.Stat(a.RepoPath); e == nil && info.IsDir() {
+			exists = true
+			if info2, e2 := os.Stat(filepath.Join(a.RepoPath, ".git")); e2 == nil && info2.IsDir() {
+				isGit = true
+			}
+		}
+	}
 	resp := map[string]any{
 		"id":                  a.ID,
 		"name":                a.Name,
 		"repo_path":           a.RepoPath,
+		"repo_path_exists":    exists,
+		"is_git_repo":         isGit,
+		"clone_url":           a.CloneURL,
 		"branch":              a.Branch,
 		"remote":              a.Remote,
 		"app_port":            a.AppPort,
@@ -335,11 +381,11 @@ func (s *Server) handleUpdateNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	entry, err := s.updater.RunUpdate(r.Context(), a.ID, "manual")
-	status := http.StatusOK
+	resp := map[string]any{"ok": err == nil, "entry": entry}
 	if err != nil {
-		status = http.StatusInternalServerError
+		resp["error"] = err.Error()
 	}
-	writeJSON(w, status, map[string]any{"ok": err == nil, "entry": entry})
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleBuildDetect(w http.ResponseWriter, r *http.Request) {
@@ -361,11 +407,7 @@ func (s *Server) handleBuildRun(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resp["error"] = err.Error()
 	}
-	st := http.StatusOK
-	if err != nil {
-		st = http.StatusInternalServerError
-	}
-	writeJSON(w, st, resp)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // ---------- service ----------
@@ -455,11 +497,7 @@ func (s *Server) handleServiceInstall(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resp["error"] = err.Error()
 	}
-	st := http.StatusOK
-	if err != nil {
-		st = http.StatusInternalServerError
-	}
-	writeJSON(w, st, resp)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleServiceUninstall(w http.ResponseWriter, r *http.Request) {
@@ -480,11 +518,7 @@ func (s *Server) handleServiceUninstall(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		resp["error"] = err.Error()
 	}
-	st := http.StatusOK
-	if err != nil {
-		st = http.StatusInternalServerError
-	}
-	writeJSON(w, st, resp)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleServiceRestart(w http.ResponseWriter, r *http.Request) {
@@ -505,11 +539,7 @@ func (s *Server) handleServiceRestart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resp["error"] = err.Error()
 	}
-	st := http.StatusOK
-	if err != nil {
-		st = http.StatusInternalServerError
-	}
-	writeJSON(w, st, resp)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // ---------- caddy ----------
@@ -580,11 +610,7 @@ func (s *Server) handleCaddyApply(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resp["error"] = err.Error()
 	}
-	st := http.StatusOK
-	if err != nil {
-		st = http.StatusInternalServerError
-	}
-	writeJSON(w, st, resp)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleCaddyRemove(w http.ResponseWriter, r *http.Request) {
@@ -597,11 +623,7 @@ func (s *Server) handleCaddyRemove(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resp["error"] = err.Error()
 	}
-	st := http.StatusOK
-	if err != nil {
-		st = http.StatusInternalServerError
-	}
-	writeJSON(w, st, resp)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleCaddyFixPermissions(w http.ResponseWriter, r *http.Request) {
@@ -622,11 +644,7 @@ func (s *Server) handleCaddyFixPermissions(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		resp["error"] = err.Error()
 	}
-	st := http.StatusOK
-	if err != nil {
-		st = http.StatusInternalServerError
-	}
-	writeJSON(w, st, resp)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleCaddyReload(w http.ResponseWriter, r *http.Request) {
@@ -639,11 +657,7 @@ func (s *Server) handleCaddyReload(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resp["error"] = err.Error()
 	}
-	st := http.StatusOK
-	if err != nil {
-		st = http.StatusInternalServerError
-	}
-	writeJSON(w, st, resp)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // ---------- admin / logs ----------

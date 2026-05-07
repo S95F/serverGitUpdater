@@ -79,6 +79,7 @@ async function loadApp() {
 
   f.name.value = r.name || "";
   f.repo_path.value = a.repo_path || "";
+  f.clone_url.value = a.clone_url || "";
   f.branch.value = a.branch || "main";
   f.remote.value = a.remote || "origin";
   f.post_update_command.value = a.post_update_command || "";
@@ -141,6 +142,29 @@ async function refreshStatus() {
   }
   setText("s-auto", data.auto_update_enabled ? `enabled — every ${data.auto_update_minutes} min` : "disabled");
   setText("s-last", fmtRelative(data.last_run));
+
+  // Toggle clone affordances based on whether the dir exists / is a repo.
+  const missing = !data.repo_path_exists || !data.is_git_repo;
+  document.getElementById("missing-dir-notice").hidden = !missing;
+  const cloneBtn = document.getElementById("clone-btn");
+  cloneBtn.hidden = !(missing && (data.clone_url || ""));
+}
+
+async function runClone() {
+  const btn = document.getElementById("clone-btn");
+  const statusEl = document.getElementById("update-status");
+  btn.disabled = true;
+  statusEl.textContent = "Cloning…";
+  try {
+    const r = await api(`/api/apps/${id}/clone`, { method: "POST" });
+    document.getElementById("last-output").textContent = r.output || "(no output)";
+    statusEl.textContent = r.ok ? "Clone OK." : `Clone failed: ${r.error || "see output"}`;
+    await refreshStatus();
+  } catch (e) {
+    statusEl.textContent = "Error: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function saveConfig(ev) {
@@ -153,6 +177,7 @@ async function saveConfig(ev) {
       body: JSON.stringify({
         name: f.name.value.trim(),
         repo_path: f.repo_path.value.trim(),
+        clone_url: f.clone_url.value.trim(),
         branch: f.branch.value.trim(),
         remote: f.remote.value.trim(),
         post_update_command: f.post_update_command.value.trim(),
@@ -312,6 +337,7 @@ async function caddyPreview() {
 }
 
 document.getElementById("update-btn").addEventListener("click", runUpdate);
+document.getElementById("clone-btn").addEventListener("click", runClone);
 document.getElementById("refresh-btn").addEventListener("click", refreshStatus);
 f.repo_path.addEventListener("input", updateRepoResolution);
 f.addEventListener("submit", saveConfig);

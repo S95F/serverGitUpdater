@@ -29,7 +29,12 @@ export async function api(path, opts = {}) {
     try { data = JSON.parse(text); } catch { data = { error: text }; }
   }
   if (!res.ok) {
-    throw new Error(data.error || `HTTP ${res.status}`);
+    // Surface useful pipeline output if the server returned it alongside the error.
+    const detail = data.entry?.output || data.output || data.error || `HTTP ${res.status}`;
+    const err = new Error(detail);
+    err.status = res.status;
+    err.data = data;
+    throw err;
   }
   return data;
 }

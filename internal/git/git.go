@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -380,4 +381,66 @@ func (u *Updater) LastRun(appID string) time.Time {
 	u.lastMu.Lock()
 	defer u.lastMu.Unlock()
 	return u.lastRun[appID]
+}
+
+// Clone runs `git clone <CloneURL> <resolved-path>` for the given app. The
+// resolved path's parent directory is created if missing. It refuses to
+// overwrite an existing non-empty directory at the resolved path so it can
+// be safely re-run / called by accident.
+func (u *Updater) Clone(ctx context.Context, appID string) (string, error) {
+	mu := u.lockFor(appID)
+	mu.Lock()
+	defer mu.Unlock()
+
+	snap := u.cfg.Snapshot()
+	app, ok := snap.FindApp(appID)
+	if !ok {
+		return "", fmt.Errorf("app %q not found", appID)
+	}
+	if app.CloneURL == "" {
+		return "", errors.New("clone_url is not configured")
+	}
+	dest := app.ResolvedRepoPath(snap.ReposDir)
+	if dest == "" {
+		return "", errors.New("repo_path is empty")
+	}
+
+	if entries, err := os.ReadDir(dest); err == nil && len(entries) > 0 {
+		return "", fmt.Errorf("destination already exists and is not empty: %s", dest)
+	}
+
+	if parent := filepath.Dir(dest); parent != "" && parent != "." && parent != "/" {
+		if err := os.MkdirAll(parent, 0o755); err != nil {
+			return "", fmt.Errorf("mkdir %s: %w", parent, err)
+		}
+	}
+
+	cctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+
+	var buf strings.Builder
+	args := []string{"clone", app.CloneURL, dest}
+	cmd := exec.CommandContext(cctx, "git", args...)
+	cmd.Env = append(os.Environ(), app.GitEnv...)
+	out, err := cmd.CombinedOutput()
+	fmt.Fprintf(&buf, "$ git %s\n%s", strings.Join(args, " "), string(out))
+	if err != nil {
+		return buf.String(), err
+	}
+
+	// If the configured branch differs from whatever the remote's default
+	// was, switch to it. We do this in a separate step so that a
+	// branch-name mismatch never leaves us with a half-empty destination.
+	if app.Branch != "" {
+		coArgs := []string{"checkout", app.Branch}
+		coCmd := exec.CommandContext(cctx, "git", coArgs...)
+		coCmd.Dir = dest
+		coCmd.Env = append(os.Environ(), app.GitEnv...)
+		coOut, coErr := coCmd.CombinedOutput()
+		fmt.Fprintf(&buf, "$ git -C %s %s\n%s", dest, strings.Join(coArgs, " "), string(coOut))
+		if coErr != nil {
+			return buf.String(), fmt.Errorf("checkout %s: %w", app.Branch, coErr)
+		}
+	}
+	return buf.String(), nil
 }

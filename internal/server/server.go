@@ -70,6 +70,7 @@ func (s *Server) Routes() http.Handler {
 
 	// per-app pipeline actions
 	mux.HandleFunc("POST /api/apps/{id}/update", s.requireAuthCSRF(s.handleUpdateNow))
+	mux.HandleFunc("POST /api/apps/{id}/clone", s.requireAuthCSRF(s.handleCloneApp))
 	mux.HandleFunc("GET /api/apps/{id}/status", s.requireAuth(s.handleStatus))
 	mux.HandleFunc("GET /api/apps/{id}/build/detect", s.requireAuth(s.handleBuildDetect))
 	mux.HandleFunc("POST /api/apps/{id}/build/run", s.requireAuthCSRF(s.handleBuildRun))

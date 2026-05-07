@@ -235,6 +235,15 @@ code {
   font-size: 0.85em;
 }
 
+.notice {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.7rem;
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+}
+.notice.warn { background: #3a2b15; border-color: #5a4521; color: #f3d8a8; }
+
 /* ---------- tabs ---------- */
 .tabs {
   display: flex;

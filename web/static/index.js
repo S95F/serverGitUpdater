@@ -42,17 +42,33 @@ document.getElementById("new-app-btn").addEventListener("click", () => {
 });
 document.getElementById("new-cancel").addEventListener("click", () => dlg.close());
 
+const cloneOutWrap = document.getElementById("new-clone-output-wrap");
+const cloneOut = document.getElementById("new-clone-output");
+
 newForm.addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const fd = new FormData(newForm);
+  newError.hidden = true;
+  cloneOutWrap.hidden = true;
   try {
     const r = await api("/api/apps", {
       method: "POST",
       body: JSON.stringify({
         name: fd.get("name"),
         repo_path: fd.get("repo_path"),
+        clone_url: fd.get("clone_url"),
       }),
     });
+    if (r.clone) {
+      cloneOut.textContent = r.clone.output || "(no output)";
+      cloneOutWrap.open = true;
+      cloneOutWrap.hidden = false;
+      if (!r.clone.ok) {
+        newError.textContent = "App created but clone failed: " + (r.clone.error || "see output");
+        newError.hidden = false;
+        return; // stay on dialog so the user can read the output
+      }
+    }
     dlg.close();
     if (r.app && r.app.id) {
       window.location.href = `/apps/${r.app.id}`;

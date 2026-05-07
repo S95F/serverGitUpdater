@@ -34,8 +34,14 @@
           <dt>Auto-update</dt><dd id="s-auto">—</dd>
           <dt>Last run</dt><dd id="s-last">—</dd>
         </dl>
+        <div id="missing-dir-notice" class="notice warn" hidden>
+          The directory at this repo path doesn't exist or isn't a git
+          repository. Set a <strong>Git clone URL</strong> below and click
+          <strong>Clone repo</strong>, or fix the path.
+        </div>
         <div class="row">
           <button id="update-btn" class="primary">Update now</button>
+          <button id="clone-btn" class="ghost" hidden>Clone repo</button>
           <button id="refresh-btn" class="ghost">Refresh</button>
         </div>
         <p id="update-status" class="muted small"></p>
@@ -59,6 +65,10 @@
           <p class="muted small">
             <span id="repo-resolution">Relative paths are joined with the server-wide <strong>repos directory</strong> (configurable in Settings). Absolute paths are used as-is.</span>
           </p>
+          <label>Git clone URL
+            <input type="text" name="clone_url" placeholder="https://github.com/owner/repo.git">
+          </label>
+          <p class="muted small">Used by the <strong>Clone repo</strong> button below to populate the repository path.</p>
           <div class="two-col">
             <label>Branch
               <input type="text" name="branch" required>

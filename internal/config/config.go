@@ -21,6 +21,7 @@ type App struct {
 	Name string `json:"name"`
 
 	RepoPath          string   `json:"repo_path"`
+	CloneURL          string   `json:"clone_url,omitempty"`
 	Branch            string   `json:"branch"`
 	Remote            string   `json:"remote"`
 	PostUpdateCommand string   `json:"post_update_command,omitempty"`
@@ -173,6 +174,7 @@ func (l legacyConfig) toApp(now time.Time) App {
 	if l.Branch != "" {
 		a.Branch = l.Branch
 	}
+	// legacy had no CloneURL field
 	if l.Remote != "" {
 		a.Remote = l.Remote
 	}
