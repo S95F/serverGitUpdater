@@ -9,13 +9,14 @@
   "username": "admin",
   "password_hash": "set via:  ./serverGitUpdater --init-user admin",
 
+  "repos_dir": "/srv/apps",
   "log_path": "/var/log/servergitupdater/updates.log",
   "max_log_rows": 500,
 
   "apps": [
     {
       "name": "myapp",
-      "repo_path": "/srv/myapp",
+      "repo_path": "myapp",
       "branch": "main",
       "remote": "origin",
       "git_env": [

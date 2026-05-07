@@ -95,7 +95,7 @@ go build -o serverGitUpdater .
 |-----|--------------|
 | `/` | Landing — list of apps with quick state and Update / Edit / Delete actions, plus a **+ New app** button. |
 | `/apps/{id}` | Per-app edit. Left sidebar shows live repo status; the 2/3-width main panel holds Repo, Build, Port, systemd service and Caddy fields. |
-| `/settings` | Server-level settings (currently the admin password change). |
+| `/settings` | Server-level settings. A dropdown picks between **Reset password** and **Server configuration** (listen address, repos directory, log path, TLS files, cookie security, etc.). |
 | `/admin` | Administration. Aggregate counters, per-app stats and a filterable update history. |
 | `/login` | Sign-in form. |
 
@@ -125,6 +125,7 @@ It has three layers:
 | `session_ttl_hours` | `12` | Session lifetime. |
 | `cookie_secure` | `false` | Set to `true` when serving over HTTPS (directly or behind a TLS proxy). |
 | `username` / `password_hash` | — | Set via `--init-user` or the Settings page. |
+| `repos_dir` | empty | If set, prepended to any per-app `repo_path` that isn't absolute. Lets you keep all working copies under one root (e.g. `/srv/apps`) and reference them by name. |
 | `log_path` | `updates.log` | JSONL file; one entry per run, tagged with `app_id`. |
 | `max_log_rows` | `500` | Rows fetched into the UI by default. |
 

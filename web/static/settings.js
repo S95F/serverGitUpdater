@@ -2,23 +2,86 @@ import { api, renderTopbar } from "/static/nav.js";
 
 await renderTopbar("settings");
 
-const form = document.getElementById("password-form");
-const status = document.getElementById("password-status");
+const picker = document.getElementById("section-picker");
+const sections = document.querySelectorAll(".section");
 
-form.addEventListener("submit", async (ev) => {
+function showSection(name) {
+  for (const s of sections) {
+    s.hidden = s.dataset.section !== name;
+  }
+}
+
+picker.addEventListener("change", () => {
+  const v = picker.value;
+  showSection(v);
+  // remember the choice in the URL hash so refreshes stay on the same section
+  history.replaceState(null, "", `#${v}`);
+});
+
+const initial = (window.location.hash || "#password").slice(1);
+if ([...picker.options].some((o) => o.value === initial)) {
+  picker.value = initial;
+}
+showSection(picker.value);
+
+// ---------- password ----------
+
+const pwForm = document.getElementById("password-form");
+const pwStatus = document.getElementById("password-status");
+pwForm.addEventListener("submit", async (ev) => {
   ev.preventDefault();
-  status.textContent = "Updating…";
+  pwStatus.textContent = "Updating…";
   try {
     await api("/api/password", {
       method: "POST",
-      body: JSON.stringify({
-        current: form.current.value,
-        new: form.new.value,
-      }),
+      body: JSON.stringify({ current: pwForm.current.value, new: pwForm.new.value }),
     });
-    form.reset();
-    status.textContent = "Password updated.";
+    pwForm.reset();
+    pwStatus.textContent = "Password updated.";
   } catch (e) {
-    status.textContent = "Error: " + e.message;
+    pwStatus.textContent = "Error: " + e.message;
   }
 });
+
+// ---------- server config ----------
+
+const srvForm = document.getElementById("server-form");
+const srvStatus = document.getElementById("server-status");
+
+async function loadServer() {
+  const c = await api("/api/server");
+  srvForm.listen_addr.value = c.listen_addr || "";
+  srvForm.session_ttl_hours.value = c.session_ttl_hours || 12;
+  srvForm.repos_dir.value = c.repos_dir || "";
+  srvForm.log_path.value = c.log_path || "";
+  srvForm.max_log_rows.value = c.max_log_rows ?? 500;
+  srvForm.cookie_secure.checked = !!c.cookie_secure;
+  srvForm.tls_cert_file.value = c.tls_cert_file || "";
+  srvForm.tls_key_file.value = c.tls_key_file || "";
+}
+
+srvForm.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  srvStatus.textContent = "Saving…";
+  try {
+    const r = await api("/api/server", {
+      method: "POST",
+      body: JSON.stringify({
+        listen_addr: srvForm.listen_addr.value.trim(),
+        session_ttl_hours: parseInt(srvForm.session_ttl_hours.value, 10),
+        repos_dir: srvForm.repos_dir.value.trim(),
+        log_path: srvForm.log_path.value.trim(),
+        max_log_rows: parseInt(srvForm.max_log_rows.value, 10),
+        cookie_secure: srvForm.cookie_secure.checked,
+        tls_cert_file: srvForm.tls_cert_file.value.trim(),
+        tls_key_file: srvForm.tls_key_file.value.trim(),
+      }),
+    });
+    const restart = (r.requires_restart || []).join(", ");
+    srvStatus.textContent = `Saved. Requires restart for: ${restart}.`;
+  } catch (e) {
+    srvStatus.textContent = "Error: " + e.message;
+  }
+});
+
+await loadServer();

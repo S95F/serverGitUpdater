@@ -74,6 +74,11 @@ type Snapshot struct {
 	Username     string `json:"username"`
 	PasswordHash string `json:"password_hash"`
 
+	// ReposDir is prepended to any per-app RepoPath that is not absolute.
+	// Lets you keep all working copies under one root (e.g. "/srv/apps")
+	// and reference them by name in each app's RepoPath.
+	ReposDir string `json:"repos_dir,omitempty"`
+
 	LogPath    string `json:"log_path"`
 	MaxLogRows int    `json:"max_log_rows"`
 
@@ -474,6 +479,20 @@ func validateApp(a *App) error {
 
 // IsValidID reports whether id is shaped like a generated app ID.
 func IsValidID(id string) bool { return idRE.MatchString(id) }
+
+// ResolvedRepoPath returns app.RepoPath joined with reposDir if it's relative.
+// Absolute paths and empty RepoPath values are returned unchanged.
+func (a App) ResolvedRepoPath(reposDir string) string {
+	return ResolveRepoPath(reposDir, a.RepoPath)
+}
+
+// ResolveRepoPath joins reposDir with repoPath when repoPath is relative.
+func ResolveRepoPath(reposDir, repoPath string) string {
+	if repoPath == "" || filepath.IsAbs(repoPath) || reposDir == "" {
+		return repoPath
+	}
+	return filepath.Join(reposDir, repoPath)
+}
 
 func newID() string {
 	b := make([]byte, 6)

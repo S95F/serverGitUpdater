@@ -77,7 +77,10 @@ async function load() {
 
     const tr = el("tr", {}, [
       el("td", {}, el("a", { href: `/apps/${a.id}`, class: "name-link" }, a.name)),
-      el("td", { class: "mono" }, a.repo_path || "—"),
+      el("td", {
+        class: "mono",
+        title: a.resolved_repo_path ? `repo_path: ${a.repo_path}` : "",
+      }, a.resolved_repo_path || a.repo_path || "—"),
       el("td", { class: "mono" }, a.branch || "—"),
       el("td", { class: "mono" }, a.app_port ? String(a.app_port) : "—"),
       el("td", {}, badge(a.auto_update_enabled, a.auto_update_enabled ? `every ${a.auto_update_minutes}m` : "off")),

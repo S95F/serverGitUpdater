@@ -134,6 +134,7 @@ type appSummary struct {
 	ID                string    `json:"id"`
 	Name              string    `json:"name"`
 	RepoPath          string    `json:"repo_path"`
+	ResolvedRepoPath  string    `json:"resolved_repo_path,omitempty"`
 	Branch            string    `json:"branch"`
 	AppPort           int       `json:"app_port,omitempty"`
 	AutoUpdateEnabled bool      `json:"auto_update_enabled"`
@@ -147,6 +148,9 @@ type appSummary struct {
 	LastRun           time.Time `json:"last_run,omitempty"`
 }
 
+// loadAppOr404 returns the app as persisted (no path resolution).
+// Use loadResolvedAppOr404 for handlers that pass the path to git, build,
+// systemctl or Caddy and therefore need the absolute path.
 func (s *Server) loadAppOr404(w http.ResponseWriter, r *http.Request) (config.App, bool) {
 	id := r.PathValue("id")
 	if !config.IsValidID(id) {
@@ -162,6 +166,18 @@ func (s *Server) loadAppOr404(w http.ResponseWriter, r *http.Request) (config.Ap
 	return app, true
 }
 
+// loadResolvedAppOr404 is loadAppOr404 plus repo_path resolution.
+// The mutation is local to the returned copy; the persisted config is
+// unchanged so editing the relative path round-trips cleanly.
+func (s *Server) loadResolvedAppOr404(w http.ResponseWriter, r *http.Request) (config.App, bool) {
+	app, ok := s.loadAppOr404(w, r)
+	if !ok {
+		return config.App{}, false
+	}
+	app.RepoPath = app.ResolvedRepoPath(s.cfg.Snapshot().ReposDir)
+	return app, true
+}
+
 // ---------- CRUD ----------
 
 func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
@@ -169,10 +185,15 @@ func (s *Server) handleListApps(w http.ResponseWriter, r *http.Request) {
 	apps := snap.SortedApps()
 	out := make([]appSummary, 0, len(apps))
 	for _, a := range apps {
+		resolved := a.ResolvedRepoPath(snap.ReposDir)
+		if resolved == a.RepoPath {
+			resolved = ""
+		}
 		out = append(out, appSummary{
 			ID:                a.ID,
 			Name:              a.Name,
 			RepoPath:          a.RepoPath,
+			ResolvedRepoPath:  resolved,
 			Branch:            a.Branch,
 			AppPort:           a.AppPort,
 			AutoUpdateEnabled: a.AutoUpdateEnabled,
@@ -261,7 +282,7 @@ func appWithID(a config.App) map[string]any {
 // ---------- per-app pipeline ----------
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.loadAppOr404(w, r)
+	a, ok := s.loadResolvedAppOr404(w, r)
 	if !ok {
 		return
 	}
@@ -285,7 +306,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateNow(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.loadAppOr404(w, r)
+	a, ok := s.loadResolvedAppOr404(w, r)
 	if !ok {
 		return
 	}
@@ -298,7 +319,7 @@ func (s *Server) handleUpdateNow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleBuildDetect(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.loadAppOr404(w, r)
+	a, ok := s.loadResolvedAppOr404(w, r)
 	if !ok {
 		return
 	}
@@ -306,7 +327,7 @@ func (s *Server) handleBuildDetect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleBuildRun(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.loadAppOr404(w, r)
+	a, ok := s.loadResolvedAppOr404(w, r)
 	if !ok {
 		return
 	}
@@ -369,7 +390,7 @@ func (s *Server) buildSpec(a config.App) service.Spec {
 }
 
 func (s *Server) handleServiceStatus(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.loadAppOr404(w, r)
+	a, ok := s.loadResolvedAppOr404(w, r)
 	if !ok {
 		return
 	}
@@ -386,7 +407,7 @@ func (s *Server) handleServiceStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleServicePreview(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.loadAppOr404(w, r)
+	a, ok := s.loadResolvedAppOr404(w, r)
 	if !ok {
 		return
 	}
@@ -401,7 +422,7 @@ func (s *Server) handleServicePreview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleServiceInstall(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.loadAppOr404(w, r)
+	a, ok := s.loadResolvedAppOr404(w, r)
 	if !ok {
 		return
 	}
@@ -418,7 +439,7 @@ func (s *Server) handleServiceInstall(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleServiceUninstall(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.loadAppOr404(w, r)
+	a, ok := s.loadResolvedAppOr404(w, r)
 	if !ok {
 		return
 	}
@@ -443,7 +464,7 @@ func (s *Server) handleServiceUninstall(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleServiceRestart(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.loadAppOr404(w, r)
+	a, ok := s.loadResolvedAppOr404(w, r)
 	if !ok {
 		return
 	}
@@ -490,7 +511,7 @@ func (s *Server) caddyConfig(a config.App) caddy.Config {
 }
 
 func (s *Server) handleCaddyStatus(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.loadAppOr404(w, r)
+	a, ok := s.loadResolvedAppOr404(w, r)
 	if !ok {
 		return
 	}
@@ -503,7 +524,7 @@ func (s *Server) handleCaddyStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCaddyPreview(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.loadAppOr404(w, r)
+	a, ok := s.loadResolvedAppOr404(w, r)
 	if !ok {
 		return
 	}
@@ -518,7 +539,7 @@ func (s *Server) handleCaddyPreview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCaddyApply(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.loadAppOr404(w, r)
+	a, ok := s.loadResolvedAppOr404(w, r)
 	if !ok {
 		return
 	}
@@ -535,7 +556,7 @@ func (s *Server) handleCaddyApply(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCaddyRemove(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.loadAppOr404(w, r)
+	a, ok := s.loadResolvedAppOr404(w, r)
 	if !ok {
 		return
 	}
@@ -552,7 +573,7 @@ func (s *Server) handleCaddyRemove(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCaddyReload(w http.ResponseWriter, r *http.Request) {
-	a, ok := s.loadAppOr404(w, r)
+	a, ok := s.loadResolvedAppOr404(w, r)
 	if !ok {
 		return
 	}

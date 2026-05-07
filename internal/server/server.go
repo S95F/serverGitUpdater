@@ -41,6 +41,8 @@ func (s *Server) Routes() http.Handler {
 		s.log.Error("embed static", "err", err)
 	}
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	mux.HandleFunc("GET /favicon.ico", s.handleFavicon)
+	mux.HandleFunc("GET /favicon.svg", s.handleFavicon)
 
 	// pages
 	mux.HandleFunc("GET /", s.handleIndex)
@@ -54,6 +56,10 @@ func (s *Server) Routes() http.Handler {
 	// account
 	mux.HandleFunc("GET /api/me", s.requireAuth(s.handleMe))
 	mux.HandleFunc("POST /api/password", s.requireAuthCSRF(s.handleChangePassword))
+
+	// server-wide settings
+	mux.HandleFunc("GET /api/server", s.requireAuth(s.handleGetServer))
+	mux.HandleFunc("POST /api/server", s.requireAuthCSRF(s.handleSetServer))
 
 	// apps CRUD
 	mux.HandleFunc("GET /api/apps", s.requireAuth(s.handleListApps))
@@ -188,6 +194,17 @@ func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 	servePage(w, "login.html")
 }
 
+func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
+	data, err := web.Files.ReadFile("static/favicon.svg")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(data)
+}
+
 func servePage(w http.ResponseWriter, name string) {
 	data, err := web.Files.ReadFile("static/" + name)
 	if err != nil {
@@ -265,6 +282,70 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 type passwordReq struct {
 	Current string `json:"current"`
 	New     string `json:"new"`
+}
+
+// serverPayload is the editable subset of Snapshot exposed via /api/server.
+// session_secret, username and password_hash are intentionally omitted.
+type serverPayload struct {
+	ListenAddr      string `json:"listen_addr"`
+	TLSCertFile     string `json:"tls_cert_file"`
+	TLSKeyFile      string `json:"tls_key_file"`
+	SessionTTLHours int    `json:"session_ttl_hours"`
+	CookieSecure    bool   `json:"cookie_secure"`
+	ReposDir        string `json:"repos_dir"`
+	LogPath         string `json:"log_path"`
+	MaxLogRows      int    `json:"max_log_rows"`
+}
+
+func (s *Server) handleGetServer(w http.ResponseWriter, r *http.Request) {
+	snap := s.cfg.Snapshot()
+	writeJSON(w, http.StatusOK, serverPayload{
+		ListenAddr:      snap.ListenAddr,
+		TLSCertFile:     snap.TLSCertFile,
+		TLSKeyFile:      snap.TLSKeyFile,
+		SessionTTLHours: snap.SessionTTLHours,
+		CookieSecure:    snap.CookieSecure,
+		ReposDir:        snap.ReposDir,
+		LogPath:         snap.LogPath,
+		MaxLogRows:      snap.MaxLogRows,
+	})
+}
+
+func (s *Server) handleSetServer(w http.ResponseWriter, r *http.Request) {
+	var p serverPayload
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		writeJSONError(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	if p.SessionTTLHours <= 0 {
+		p.SessionTTLHours = 12
+	}
+	if p.MaxLogRows < 0 {
+		writeJSONError(w, http.StatusBadRequest, "max_log_rows must be >= 0")
+		return
+	}
+	if (p.TLSCertFile == "") != (p.TLSKeyFile == "") {
+		writeJSONError(w, http.StatusBadRequest, "tls_cert_file and tls_key_file must both be set or both empty")
+		return
+	}
+	if err := s.cfg.Update(s.configPath, func(c *config.Snapshot) {
+		c.ListenAddr = strings.TrimSpace(p.ListenAddr)
+		c.TLSCertFile = strings.TrimSpace(p.TLSCertFile)
+		c.TLSKeyFile = strings.TrimSpace(p.TLSKeyFile)
+		c.SessionTTLHours = p.SessionTTLHours
+		c.CookieSecure = p.CookieSecure
+		c.ReposDir = strings.TrimSpace(p.ReposDir)
+		c.LogPath = strings.TrimSpace(p.LogPath)
+		c.MaxLogRows = p.MaxLogRows
+	}); err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "save failed")
+		return
+	}
+	// surface which fields require a restart so the UI can warn the user
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":               true,
+		"requires_restart": []string{"listen_addr", "tls_cert_file", "tls_key_file"},
+	})
 }
 
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {

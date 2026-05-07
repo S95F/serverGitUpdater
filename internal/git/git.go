@@ -135,6 +135,7 @@ func (u *Updater) Status(ctx context.Context, appID string) (Status, error) {
 	if !ok {
 		return Status{}, fmt.Errorf("app %q not found", appID)
 	}
+	app.RepoPath = app.ResolvedRepoPath(snap.ReposDir)
 	if app.RepoPath == "" {
 		return Status{}, errors.New("repo_path is not configured")
 	}
@@ -176,6 +177,7 @@ func (u *Updater) RunUpdate(ctx context.Context, appID, source string) (LogEntry
 		u.appendLog(snap, entry)
 		return entry, fmt.Errorf("app %q not found", appID)
 	}
+	app.RepoPath = app.ResolvedRepoPath(snap.ReposDir)
 
 	start := time.Now()
 	entry := LogEntry{Time: start, AppID: app.ID, AppName: app.Name, Source: source}

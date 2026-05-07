@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Settings - serverGitUpdater</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -13,7 +14,17 @@
     <h1>Settings</h1>
 
     <section class="card">
-      <h2>Change password</h2>
+      <label class="inline">
+        <span>Section</span>
+        <select id="section-picker">
+          <option value="password">Reset password</option>
+          <option value="server">Server configuration</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="card section" data-section="password">
+      <h2>Reset password</h2>
       <form id="password-form">
         <label>Current password
           <input type="password" name="current" autocomplete="current-password" required>
@@ -23,6 +34,59 @@
         </label>
         <button type="submit" class="primary">Update password</button>
         <p id="password-status" class="muted small"></p>
+      </form>
+    </section>
+
+    <section class="card section" data-section="server" hidden>
+      <h2>Server configuration</h2>
+      <p class="muted small">
+        These settings apply server-wide. Changes to <code>listen_addr</code>,
+        <code>tls_cert_file</code> and <code>tls_key_file</code> only take
+        effect after restarting the binary; the rest are picked up live.
+      </p>
+      <form id="server-form">
+        <div class="two-col">
+          <label>Listen address
+            <input type="text" name="listen_addr" placeholder=":8080" required>
+          </label>
+          <label>Session lifetime (hours)
+            <input type="number" name="session_ttl_hours" min="1" required>
+          </label>
+        </div>
+        <label>Repos directory
+          <input type="text" name="repos_dir" placeholder="/srv/apps">
+        </label>
+        <p class="muted small">
+          When set, any app whose <code>repo_path</code> is relative is joined
+          with this directory. Absolute paths are used as-is.
+        </p>
+        <div class="two-col">
+          <label>Update log path
+            <input type="text" name="log_path" required>
+          </label>
+          <label>Max log rows in UI
+            <input type="number" name="max_log_rows" min="0" required>
+          </label>
+        </div>
+        <label class="checkbox">
+          <input type="checkbox" name="cookie_secure">
+          <span>Secure cookies (set this when serving over HTTPS)</span>
+        </label>
+        <fieldset>
+          <legend>Built-in TLS (optional)</legend>
+          <p class="muted small">
+            Leave both blank to serve plain HTTP. When both are set, the
+            binary serves HTTPS directly using these files.
+          </p>
+          <label>TLS certificate file
+            <input type="text" name="tls_cert_file" placeholder="/etc/letsencrypt/.../fullchain.pem">
+          </label>
+          <label>TLS key file
+            <input type="text" name="tls_key_file" placeholder="/etc/letsencrypt/.../privkey.pem">
+          </label>
+        </fieldset>
+        <button type="submit" class="primary">Save server settings</button>
+        <p id="server-status" class="muted small"></p>
       </form>
     </section>
   </main>
