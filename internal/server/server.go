@@ -42,7 +42,11 @@ func (s *Server) Routes() http.Handler {
 	if err != nil {
 		s.log.Error("embed static", "err", err)
 	}
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	// no-store on /static/* so a binary upgrade is reflected in the browser
+	// immediately. Without this, http.FileServer never sets Cache-Control
+	// and embed.FS has no useful Last-Modified, so browsers happily reuse
+	// stale settings.html / nav.js / style.css across upgrades.
+	mux.Handle("GET /static/", http.StripPrefix("/static/", noStore(http.FileServer(http.FS(staticFS)))))
 	mux.HandleFunc("GET /favicon.ico", s.handleFavicon)
 	mux.HandleFunc("GET /favicon.svg", s.handleFavicon)
 
@@ -204,6 +208,17 @@ func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	servePage(w, "login.html")
+}
+
+// noStore wraps an http.Handler and adds Cache-Control: no-store so
+// browsers always re-fetch the underlying asset. Used for /static/*
+// because the embedded files have a fixed (epoch) mod time, so
+// conditional GETs would always 304 and never pick up new releases.
+func noStore(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		h.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) handleFavicon(w http.ResponseWriter, r *http.Request) {
