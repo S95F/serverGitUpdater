@@ -507,7 +507,16 @@ sudo ./scripts/install.sh update      # pull-and-rebuild upgrade (config preserv
 sudo ./scripts/install.sh status      # systemctl status + journal tail
 sudo ./scripts/install.sh uninstall   # stop & remove the unit (keeps config/data)
 sudo ./scripts/install.sh purge       # uninstall + remove config, logs, data, user
+sudo ./scripts/restart.sh             # systemctl restart servergitupdater + show status
 ```
+
+There's also a **Restart this server** button on **Settings → Server
+configuration** that asks the daemon to shut itself down via
+`POST /api/server/restart`; under the unit shipped by `install.sh`
+(`Restart=always`) systemd brings it right back. The page polls
+`/api/me` until it answers again and reports "Back up." Use this after
+editing `listen_addr`, the TLS files, or the GitHub token, since those
+only take effect on restart.
 
 It builds the binary, creates a system user (`sgu` by default), installs
 to `/usr/local/bin/serverGitUpdater`, writes a hardened unit at

@@ -6,7 +6,9 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/s95f/servergitupdater/internal/auth"
@@ -60,6 +62,7 @@ func (s *Server) Routes() http.Handler {
 	// server-wide settings
 	mux.HandleFunc("GET /api/server", s.requireAuth(s.handleGetServer))
 	mux.HandleFunc("POST /api/server", s.requireAuthCSRF(s.handleSetServer))
+	mux.HandleFunc("POST /api/server/restart", s.requireAuthCSRF(s.handleServerRestart))
 
 	// apps CRUD
 	mux.HandleFunc("GET /api/apps", s.requireAuth(s.handleListApps))
@@ -366,6 +369,31 @@ func (s *Server) handleSetServer(w http.ResponseWriter, r *http.Request) {
 		"ok":               true,
 		"requires_restart": []string{"listen_addr", "tls_cert_file", "tls_key_file"},
 	})
+}
+
+// handleServerRestart triggers a graceful self-shutdown of the daemon.
+// systemd (or any process supervisor configured with Restart=always)
+// is expected to bring the binary back up. The response is flushed
+// before the SIGTERM is sent so the caller always sees the 200.
+func (s *Server) handleServerRestart(w http.ResponseWriter, r *http.Request) {
+	managedBySystemd := os.Getenv("INVOCATION_ID") != ""
+	resp := map[string]any{
+		"ok":                  true,
+		"managed_by_systemd":  managedBySystemd,
+		"message":             "restart requested; sending SIGTERM in 200ms",
+	}
+	if !managedBySystemd {
+		resp["warning"] = "no INVOCATION_ID env var; the process will exit but nothing will bring it back automatically. Run under systemd (Restart=always) or supervisord to get auto-restart."
+	}
+	writeJSON(w, http.StatusOK, resp)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		s.log.Info("self-restart requested via /api/server/restart", "managed_by_systemd", managedBySystemd)
+		_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
+	}()
 }
 
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {

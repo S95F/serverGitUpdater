@@ -92,4 +92,47 @@ srvForm.addEventListener("submit", async (ev) => {
   }
 });
 
+const restartBtn = document.getElementById("server-restart-btn");
+const restartStatus = document.getElementById("server-restart-status");
+
+async function pingUntilAlive(deadlineMs) {
+  const start = Date.now();
+  while (Date.now() - start < deadlineMs) {
+    try {
+      const res = await fetch("/api/me", { credentials: "same-origin", cache: "no-store" });
+      if (res.ok || res.status === 401) return true; // server is answering again
+    } catch { /* still down */ }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
+
+restartBtn.addEventListener("click", async () => {
+  if (!window.confirm("Restart the daemon now? The web UI will be unavailable for a couple of seconds.")) return;
+  restartBtn.disabled = true;
+  restartStatus.textContent = "Asking the daemon to shut itself down…";
+  try {
+    const r = await api("/api/server/restart", { method: "POST" });
+    if (r.warning) {
+      restartStatus.textContent = `Sent. Warning: ${r.warning}`;
+      restartBtn.disabled = false;
+      return;
+    }
+    restartStatus.textContent = "SIGTERM sent. Waiting for systemd to bring it back…";
+    const ok = await pingUntilAlive(20000);
+    if (ok) {
+      restartStatus.textContent = "Back up.";
+    } else {
+      restartStatus.textContent = "Timed out waiting for the server to return. Check `journalctl -u servergitupdater -f`.";
+    }
+  } catch (e) {
+    // Connection drops mid-request are expected when the server exits before we hear back.
+    restartStatus.textContent = "Server closed the connection (likely already shutting down). Waiting for it to come back…";
+    const ok = await pingUntilAlive(20000);
+    restartStatus.textContent = ok ? "Back up." : "Timed out waiting for the server to return.";
+  } finally {
+    restartBtn.disabled = false;
+  }
+});
+
 await loadServer();

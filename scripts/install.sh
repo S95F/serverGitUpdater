@@ -178,8 +178,11 @@ Type=simple
 User=$USER_NAME
 Group=$GROUP_NAME
 ExecStart=$INSTALL_BIN --config $CONFIG_FILE
-Restart=on-failure
-RestartSec=5s
+# always: also revives clean self-shutdowns triggered from
+# POST /api/server/restart in the UI; systemctl stop / disable still
+# stop the unit normally.
+Restart=always
+RestartSec=2s
 
 # Hardening (sandbox the daemon as much as we can while still letting it
 # write to its own dirs and shell out to git/build/systemctl/caddy).

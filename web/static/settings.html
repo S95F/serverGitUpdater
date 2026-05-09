@@ -99,6 +99,22 @@
         <button type="submit" class="primary">Save server settings</button>
         <p id="server-status" class="muted small"></p>
       </form>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:1rem 0;">
+
+      <h3 style="margin:0 0 .4rem;font-size:.95rem;">Restart this server</h3>
+      <p class="muted small">
+        Asks the running daemon to shut itself down cleanly. Under
+        systemd with <code>Restart=always</code> (what
+        <code>scripts/install.sh</code> writes) the unit comes right
+        back up — typically within a couple of seconds. Use it after
+        editing <code>listen_addr</code>, the TLS files, or the GitHub
+        token to make those changes take effect.
+      </p>
+      <div class="row">
+        <button type="button" id="server-restart-btn" class="ghost danger">Restart this server</button>
+      </div>
+      <p id="server-restart-status" class="muted small"></p>
     </section>
   </main>
 
