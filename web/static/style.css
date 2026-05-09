@@ -359,3 +359,118 @@ code {
 }
 .stat-label { color: var(--muted); font-size: 0.8rem; }
 .stat-value { font-size: 1.4rem; font-weight: 600; margin-top: 0.2rem; }
+
+/* ------------------------------------------------------------------ */
+/* Mobile / narrow-viewport tuning. Two breakpoints:                   */
+/*   <= 900px  collapse the per-app sidebar+main split (already        */
+/*             handled above) and any 2-column form rows.              */
+/*   <= 720px  full mobile mode: smaller padding, stacked kv lists,    */
+/*             horizontally-scrollable tabs and generic tables, plus a */
+/*             card-style layout for the apps landing table.           */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 900px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+  body { font-size: 14px; }
+
+  /* Inputs at >= 16px font-size stop iOS Safari from zooming on focus. */
+  input[type="text"], input[type="password"], input[type="number"],
+  input[type="email"], textarea, select {
+    font-size: 16px;
+  }
+
+  /* Topbar: wrap, smaller padding, drop the username pill on the tightest screens. */
+  .topbar { padding: 0.55rem 0.75rem; flex-wrap: wrap; gap: 0.4rem 0.75rem; }
+  .topbar-left { gap: 0.75rem; flex-wrap: wrap; }
+  .topbar-right { gap: 0.5rem; }
+  .topbar-right > .small { display: none; }
+  .nav-links { gap: 0.15rem; flex-wrap: wrap; }
+  .nav-link { padding: 0.4rem 0.55rem; }
+
+  /* Dropdown stretches under the trigger so menu items are tap-target sized. */
+  .dropdown-menu { left: 0; right: auto; min-width: 180px; }
+  .dropdown-item { padding: 0.7rem 0.9rem; }
+
+  /* Page chrome */
+  .page { padding: 0.75rem; }
+  .page-head { flex-wrap: wrap; gap: 0.5rem; }
+  .card { padding: 0.85rem 0.9rem; }
+
+  /* Sidebar's key/value list stacks (label above value) so long paths breathe. */
+  .kv { grid-template-columns: 1fr; gap: 0 0.4rem; row-gap: 0.4rem; }
+  .kv dt { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .kv dd { margin-bottom: 0.15rem; }
+
+  /* Tabs: keep on one line, scroll horizontally if they overflow. */
+  .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tab { white-space: nowrap; }
+
+  /* Buttons: comfortable tap target. */
+  button, a.ghost, a.small, button.small {
+    min-height: 36px;
+  }
+
+  /* Generic tables get a horizontal scroll fallback. The apps list
+     table has a richer card layout below. */
+  table:not(.filesystem) {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Apps landing table → card per row. Each <td> picks up its label
+     from data-label set in index.js. */
+  table.filesystem,
+  table.filesystem tbody,
+  table.filesystem tr,
+  table.filesystem td {
+    display: block;
+  }
+  table.filesystem thead { display: none; }
+  table.filesystem tr {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 0 0 0.6rem 0;
+    padding: 0.5rem 0.7rem;
+    background: var(--panel-2);
+  }
+  table.filesystem tbody tr:hover { background: var(--panel-2); }
+  table.filesystem td {
+    border: none;
+    padding: 0.25rem 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.6rem;
+  }
+  table.filesystem td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+  /* The name row should read large and not be label-prefixed. */
+  table.filesystem td.name-cell { padding: 0.1rem 0 0.5rem; }
+  table.filesystem td.name-cell::before { display: none; }
+  table.filesystem td.name-cell .name-link { font-size: 1.05rem; }
+  /* Action buttons fill the row neatly. */
+  table.filesystem td.actions { padding-top: 0.5rem; }
+  table.filesystem td.actions::before { display: none; }
+  table.filesystem td.actions { justify-content: flex-end; }
+
+  /* Modal: full-width-ish on small screens. */
+  .modal { width: calc(100vw - 2rem); padding: 1rem; }
+
+  /* Output panes shouldn't dominate the screen. */
+  pre { max-height: 240px; font-size: 0.8rem; }
+
+  /* Stat grid wraps tightly. */
+  .stat-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+  .stat-value { font-size: 1.15rem; }
+}

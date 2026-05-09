@@ -121,18 +121,24 @@ async function load() {
     const deleteBtn = el("button", { class: "ghost small danger", onclick: () => deleteApp(a.id, a.name) }, "Delete");
 
     const tr = el("tr", {}, [
-      el("td", {}, el("a", { href: `/apps/${a.id}`, class: "name-link" }, a.name)),
+      el("td", { class: "name-cell" },
+        el("a", { href: `/apps/${a.id}`, class: "name-link" }, a.name)),
       el("td", {
         class: "mono",
+        "data-label": "Repo",
         title: a.resolved_repo_path ? `repo_path: ${a.repo_path}` : "",
       }, a.resolved_repo_path || a.repo_path || "—"),
-      el("td", { class: "mono" }, a.branch || "—"),
-      el("td", { class: "mono" }, a.app_port ? String(a.app_port) : "—"),
-      el("td", {}, badge(a.auto_update_enabled, a.auto_update_enabled ? `every ${a.auto_update_minutes}m` : "off")),
-      el("td", {}, badge(a.auto_build_enabled, a.auto_build_enabled ? "on" : "off")),
-      el("td", {}, a.service_enabled ? badge(true, a.service_name || "on") : badge(false, "off")),
-      el("td", {}, a.caddy_enabled ? badge(true, a.caddy_domain || "on") : badge(false, "off")),
-      el("td", { class: "muted" }, fmtRelative(a.last_run)),
+      el("td", { class: "mono", "data-label": "Branch" }, a.branch || "—"),
+      el("td", { class: "mono", "data-label": "Port" }, a.app_port ? String(a.app_port) : "—"),
+      el("td", { "data-label": "Auto-update" },
+        badge(a.auto_update_enabled, a.auto_update_enabled ? `every ${a.auto_update_minutes}m` : "off")),
+      el("td", { "data-label": "Auto-build" },
+        badge(a.auto_build_enabled, a.auto_build_enabled ? "on" : "off")),
+      el("td", { "data-label": "Service" },
+        a.service_enabled ? badge(true, a.service_name || "on") : badge(false, "off")),
+      el("td", { "data-label": "Caddy" },
+        a.caddy_enabled ? badge(true, a.caddy_domain || "on") : badge(false, "off")),
+      el("td", { class: "muted", "data-label": "Last run" }, fmtRelative(a.last_run)),
       el("td", { class: "actions" }, [updateBtn, editBtn, deleteBtn]),
     ]);
     tbody.appendChild(tr);
