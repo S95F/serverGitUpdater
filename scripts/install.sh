@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Install serverGitUpdater as a systemd service.
+# Install or upgrade serverGitUpdater as a systemd service.
 #
 # Usage:
-#   sudo ./scripts/install.sh [install|uninstall|purge|status]
+#   sudo ./scripts/install.sh [install|update|uninstall|purge|status]
 #
-# Re-running `install` is safe: the binary is rebuilt and re-installed,
-# the unit is re-written, and the service is restarted. Existing config,
-# logs, and managed apps are preserved.
+# `install` and `update` do the same thing — both rebuild the binary,
+# re-install it, re-write the unit, and restart the service. Existing
+# config, logs, and managed apps are preserved on every run.
+# `update` also takes a single rolling backup of $CONFIG_FILE before
+# touching anything (saved to $CONFIG_FILE.bak) and prints the version
+# that was running before / after the swap.
 #
 # Override paths/users via env vars before running:
 #   SGU_USER          system user to run the daemon as (default: sgu)
@@ -46,19 +49,35 @@ need_root() {
 
 usage() {
   cat <<EOF
-Install serverGitUpdater as a systemd service.
+Install or upgrade serverGitUpdater as a systemd service.
 
-Usage: sudo $0 [install|uninstall|purge|status]
+Usage: sudo $0 [install|update|uninstall|purge|status]
   install     Build, install the binary, create user/dirs, write the unit,
               run --init-user the first time, and start the service.
-              Re-running upgrades the binary in place and restarts.
+              Safe to re-run.
+  update      Same as install but with upgrade-aware output: takes a
+              rolling backup of $CONFIG_FILE.bak first and prints the
+              before/after binary version. Use this for upgrades.
   uninstall   Stop & disable the service and remove the unit. Config,
               logs, repos, and the system user are preserved.
   purge       Uninstall, then remove config, logs, data dir, and the user.
   status      systemctl status servergitupdater + journalctl tail.
 
+Existing config is always preserved. The binary's loader fills in
+defaults for new fields and migrates legacy single-app configs into
+apps[]; you don't need to edit config.json by hand between releases.
+
 Paths can be overridden via env vars; see the top of $0.
 EOF
+}
+
+bin_version() {
+  local p="$1"
+  if [ -x "$p" ]; then
+    "$p" --version 2>/dev/null || echo "(unknown)"
+  else
+    echo "(not installed)"
+  fi
 }
 
 build_binary() {
@@ -73,8 +92,24 @@ build_binary() {
   fi
 }
 
-cmd_install() {
-  need_root install
+cmd_install() { run_install_or_update install; }
+cmd_update()  { run_install_or_update update; }
+
+run_install_or_update() {
+  local mode="$1" # "install" or "update"
+  need_root "$mode"
+
+  local before_version=""
+  if [ "$mode" = "update" ] && [ -x "$INSTALL_BIN" ]; then
+    before_version="$(bin_version "$INSTALL_BIN")"
+    log "currently installed: $before_version"
+  fi
+
+  if [ "$mode" = "update" ] && [ -f "$CONFIG_FILE" ]; then
+    log "backing up config to ${CONFIG_FILE}.bak"
+    install -o "$USER_NAME" -g "$GROUP_NAME" -m 0600 "$CONFIG_FILE" "${CONFIG_FILE}.bak" 2>/dev/null \
+      || cp -p "$CONFIG_FILE" "${CONFIG_FILE}.bak"
+  fi
 
   local source_bin
   source_bin="$(build_binary)"
@@ -172,6 +207,19 @@ EOF
   systemctl enable "$UNIT_NAME.service" >/dev/null
   systemctl restart "$UNIT_NAME.service"
 
+  if [ "$mode" = "update" ]; then
+    local after_version
+    after_version="$(bin_version "$INSTALL_BIN")"
+    if [ -n "$before_version" ] && [ "$before_version" != "$after_version" ]; then
+      log "upgraded: $before_version → $after_version"
+    elif [ -n "$before_version" ]; then
+      log "version unchanged: $after_version (binary re-installed and service restarted)"
+    else
+      log "installed: $after_version"
+    fi
+    log "config preserved; rolling backup at ${CONFIG_FILE}.bak"
+  fi
+
   log "done."
   log "  service:    systemctl status $UNIT_NAME"
   log "  follow log: journalctl -u $UNIT_NAME -f"
@@ -221,10 +269,11 @@ cmd_status() {
 }
 
 case "${1:-install}" in
-  install)         cmd_install ;;
-  uninstall)       cmd_uninstall ;;
-  purge)           cmd_purge ;;
-  status)          cmd_status ;;
-  -h|--help|help)  usage ;;
-  *)               usage; exit 1 ;;
+  install)             cmd_install ;;
+  update|upgrade)      cmd_update ;;
+  uninstall)           cmd_uninstall ;;
+  purge)               cmd_purge ;;
+  status)              cmd_status ;;
+  -h|--help|help)      usage ;;
+  *)                   usage; exit 1 ;;
 esac

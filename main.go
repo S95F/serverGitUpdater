@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -16,17 +18,60 @@ import (
 	"github.com/s95f/servergitupdater/internal/server"
 )
 
+// Version is overridable at build time via:
+//   go build -ldflags "-X main.Version=v1.2.3" .
+// If not set, we fall back to vcs info embedded by `go build` itself.
+var Version = "dev"
+
+func versionString() string {
+	out := Version
+	if info, ok := debug.ReadBuildInfo(); ok {
+		var revision, modified string
+		for _, s := range info.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				revision = s.Value
+			case "vcs.modified":
+				modified = s.Value
+			}
+		}
+		if revision != "" {
+			short := revision
+			if len(short) > 7 {
+				short = short[:7]
+			}
+			suffix := short
+			if modified == "true" {
+				suffix += "-dirty"
+			}
+			if out == "dev" || out == "" {
+				out = "dev (" + suffix + ")"
+			} else {
+				out += " (" + suffix + ")"
+			}
+		}
+	}
+	return out
+}
+
 func main() {
 	var (
-		configPath = flag.String("config", "config.json", "path to config file")
-		addr       = flag.String("addr", "", "override listen address (e.g. :8080)")
-		initUser   = flag.String("init-user", "", "create or reset the admin user with this username and exit")
-		initPass   = flag.String("init-pass", "", "password for --init-user (read from stdin if empty)")
+		configPath  = flag.String("config", "config.json", "path to config file")
+		addr        = flag.String("addr", "", "override listen address (e.g. :8080)")
+		initUser    = flag.String("init-user", "", "create or reset the admin user with this username and exit")
+		initPass    = flag.String("init-pass", "", "password for --init-user (read from stdin if empty)")
+		showVersion = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
 
+	if *showVersion {
+		fmt.Println("serverGitUpdater " + versionString())
+		return
+	}
+
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
+
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {

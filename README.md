@@ -502,18 +502,34 @@ The repo ships an installer script that does the whole setup for you on
 a Linux host with systemd:
 
 ```sh
-sudo ./scripts/install.sh           # install + start
-sudo ./scripts/install.sh status    # systemctl status + journal tail
-sudo ./scripts/install.sh uninstall  # stop & remove the unit (keeps config/data)
-sudo ./scripts/install.sh purge     # uninstall + remove config, logs, data, user
+sudo ./scripts/install.sh             # first-time install + start
+sudo ./scripts/install.sh update      # pull-and-rebuild upgrade (config preserved)
+sudo ./scripts/install.sh status      # systemctl status + journal tail
+sudo ./scripts/install.sh uninstall   # stop & remove the unit (keeps config/data)
+sudo ./scripts/install.sh purge       # uninstall + remove config, logs, data, user
 ```
 
 It builds the binary, creates a system user (`sgu` by default), installs
 to `/usr/local/bin/serverGitUpdater`, writes a hardened unit at
 `/etc/systemd/system/servergitupdater.service` pointing at
 `/etc/servergitupdater/config.json`, runs `--init-user` once for the
-admin password, then `daemon-reload` + `enable --now`. Re-running
-`install` rebuilds and restarts cleanly.
+admin password, then `daemon-reload` + `enable --now`.
+
+### Upgrading
+
+`install` and `update` do the same thing — both rebuild, re-install,
+re-write the unit, and restart. Use `update` for upgrades; it adds:
+
+- A single rolling backup of `config.json` to `config.json.bak` before
+  anything else runs, so you can roll back with `cp` if needed.
+- Before/after binary version (from `--version`), so the upgrade is
+  visible in the script output.
+
+Your config is always preserved. The loader fills in defaults for new
+fields and the legacy single-app top-level shape is auto-migrated into
+`apps[]` on first load, so you don't need to edit `config.json` by
+hand between releases. Saves are atomic (tmp + rename) so the file is
+never half-written.
 
 Paths and the listen address are overridable via env vars (`SGU_USER`,
 `SGU_BIN`, `SGU_CONFIG_DIR`, `SGU_LOG_DIR`, `SGU_DATA_DIR`,
@@ -626,6 +642,7 @@ The app never sees or stores Git credentials.
 --addr string       override listen address (e.g. ":8080")
 --init-user string  create or reset the admin user with this username and exit
 --init-pass string  password for --init-user (read from stdin if empty)
+--version           print version (with the embedded vcs.revision) and exit
 ```
 
 ## Project layout
