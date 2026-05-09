@@ -83,7 +83,7 @@ export function resolveUnderReposDir(reposDir, repoPath) {
 export function fmtRelative(s) {
   if (!s) return "never";
   const d = new Date(s);
-  if (isNaN(d.getTime()) || d.getTime() === 0) return "never";
+  if (isNaN(d.getTime()) || d.getTime() === 0 || d.getFullYear() < 1971) return "never";
   const diff = Date.now() - d.getTime();
   if (diff < 0) return "in the future";
   const secs = Math.floor(diff / 1000);

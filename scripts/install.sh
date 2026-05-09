@@ -122,9 +122,22 @@ build_binary() {
   fi
   if [ -n "$go_bin" ]; then
     log "building from $REPO_ROOT using $go_bin ($("$go_bin" version | awk '{print $3}'))"
-    ( cd "$REPO_ROOT" && "$go_bin" build -o "$REPO_ROOT/.sgu-build" . )
-    # Remove any stale pre-built binary in the repo root so a future run
-    # that fails to find go won't silently install yesterday's build.
+    # `go build` embeds VCS info by shelling out to `git`. When this script
+    # runs under sudo, git is invoked as root against a repo whose worktree
+    # is typically owned by the calling user, which trips git's "dubious
+    # ownership" safety check (exit 128). Pin safe.directory to this one
+    # repo just for this command, and bail loudly if the build itself
+    # fails so the next step doesn't try to install a missing binary.
+    if ! ( cd "$REPO_ROOT" && \
+           GIT_CONFIG_COUNT=1 \
+           GIT_CONFIG_KEY_0=safe.directory \
+           GIT_CONFIG_VALUE_0="$REPO_ROOT" \
+           "$go_bin" build -o "$REPO_ROOT/.sgu-build" . ); then
+      die "go build failed in $REPO_ROOT (see error above); refusing to install a stale binary"
+    fi
+    if [ ! -x "$REPO_ROOT/.sgu-build" ]; then
+      die "go build did not produce $REPO_ROOT/.sgu-build (see error above)"
+    fi
     rm -f "$REPO_ROOT/serverGitUpdater"
     echo "$REPO_ROOT/.sgu-build"
     return 0
