@@ -80,16 +80,66 @@ bin_version() {
   fi
 }
 
-build_binary() {
-  if [ -f "$REPO_ROOT/go.mod" ] && command -v go >/dev/null 2>&1; then
-    log "building from $REPO_ROOT (go $(go version | awk '{print $3}'))"
-    ( cd "$REPO_ROOT" && go build -o "$REPO_ROOT/.sgu-build" . )
-    echo "$REPO_ROOT/.sgu-build"
-  elif [ -x "$REPO_ROOT/serverGitUpdater" ]; then
-    echo "$REPO_ROOT/serverGitUpdater"
-  else
-    die "no Go toolchain and no pre-built binary at $REPO_ROOT/serverGitUpdater; build it first or install Go (>= 1.22)"
+# find_go locates a `go` executable even when sudo has stripped the
+# caller's PATH (which is the default on most distros). Echoes the
+# absolute path on success, returns non-zero otherwise.
+find_go() {
+  if command -v go >/dev/null 2>&1; then
+    command -v go
+    return 0
   fi
+  # Common system install paths.
+  local cand
+  for cand in /usr/local/go/bin/go /usr/lib/go/bin/go /opt/go/bin/go /snap/bin/go; do
+    if [ -x "$cand" ]; then
+      echo "$cand"
+      return 0
+    fi
+  done
+  # Distro-versioned packages: /usr/lib/go-1.22/bin/go etc.
+  for cand in /usr/lib/go-*/bin/go; do
+    if [ -x "$cand" ]; then
+      echo "$cand"
+      return 0
+    fi
+  done
+  # Calling user's home (when running under sudo).
+  if [ -n "${SUDO_USER:-}" ]; then
+    local user_home
+    user_home="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6)"
+    if [ -n "$user_home" ] && [ -x "$user_home/go/bin/go" ]; then
+      echo "$user_home/go/bin/go"
+      return 0
+    fi
+  fi
+  return 1
+}
+
+build_binary() {
+  local go_bin=""
+  if [ -f "$REPO_ROOT/go.mod" ]; then
+    go_bin="$(find_go || true)"
+  fi
+  if [ -n "$go_bin" ]; then
+    log "building from $REPO_ROOT using $go_bin ($("$go_bin" version | awk '{print $3}'))"
+    ( cd "$REPO_ROOT" && "$go_bin" build -o "$REPO_ROOT/.sgu-build" . )
+    # Remove any stale pre-built binary in the repo root so a future run
+    # that fails to find go won't silently install yesterday's build.
+    rm -f "$REPO_ROOT/serverGitUpdater"
+    echo "$REPO_ROOT/.sgu-build"
+    return 0
+  fi
+  if [ -x "$REPO_ROOT/serverGitUpdater" ]; then
+    warn "no Go toolchain found in PATH or common locations (/usr/local/go/bin, /usr/lib/go*, /opt/go, /snap/bin, \$SUDO_USER/go/bin)"
+    warn "FALLING BACK to existing pre-built binary at $REPO_ROOT/serverGitUpdater"
+    warn "this binary may be stale — to force a rebuild run:"
+    warn "    cd $REPO_ROOT && go build -o serverGitUpdater . && sudo $0 update"
+    warn "or invoke the installer with PATH preserved:"
+    warn "    sudo env \"PATH=\$PATH\" $0 update"
+    echo "$REPO_ROOT/serverGitUpdater"
+    return 0
+  fi
+  die "no Go toolchain and no pre-built binary at $REPO_ROOT/serverGitUpdater; install Go >= 1.22 or pre-build the binary"
 }
 
 cmd_install() { run_install_or_update install; }
