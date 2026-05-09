@@ -356,6 +356,26 @@ async function caddyPreview() {
   } catch (e) { el.textContent = "Preview error: " + e.message; }
 }
 
+document.getElementById("suggest-port-btn").addEventListener("click", async () => {
+  const status = document.getElementById("suggest-port-status");
+  const btn = document.getElementById("suggest-port-btn");
+  btn.disabled = true;
+  status.textContent = "Looking for a free port…";
+  try {
+    const r = await api(`/api/suggest-port?exclude_app=${encodeURIComponent(id)}`);
+    if (!r.ok) {
+      status.textContent = "Couldn't find a free port: " + (r.error || "no candidates");
+      return;
+    }
+    f.app_port.value = r.port;
+    status.textContent = `Picked ${r.port}. Click Save settings to apply.`;
+  } catch (e) {
+    status.textContent = "Error: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 document.getElementById("update-btn").addEventListener("click", runUpdate);
 document.getElementById("clone-btn").addEventListener("click", runClone);
 document.getElementById("refresh-btn").addEventListener("click", refreshStatus);

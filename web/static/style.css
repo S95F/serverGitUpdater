@@ -195,6 +195,9 @@ a.ghost {
 }
 
 .row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.input-with-action { display: flex; gap: 0.4rem; align-items: stretch; }
+.input-with-action input { flex: 1 1 auto; min-width: 0; }
+.input-with-action button { flex: 0 0 auto; }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
 .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end; }
 .sticky-actions {

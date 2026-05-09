@@ -68,6 +68,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/server", s.requireAuthCSRF(s.handleSetServer))
 	mux.HandleFunc("POST /api/server/restart", s.requireAuthCSRF(s.handleServerRestart))
 
+	// utilities
+	mux.HandleFunc("GET /api/suggest-port", s.requireAuth(s.handleSuggestPort))
+
 	// apps CRUD
 	mux.HandleFunc("GET /api/apps", s.requireAuth(s.handleListApps))
 	mux.HandleFunc("POST /api/apps", s.requireAuthCSRF(s.handleCreateApp))

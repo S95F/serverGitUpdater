@@ -141,12 +141,16 @@
             </p>
             <div class="two-col">
               <label>App port
-                <input type="number" name="app_port" min="0" max="65535">
+                <span class="input-with-action">
+                  <input type="number" name="app_port" min="0" max="65535">
+                  <button type="button" id="suggest-port-btn" class="ghost small" title="Pick a random free port that doesn't collide with other apps, the updater itself, or well-known services">Suggest</button>
+                </span>
               </label>
               <label>Port flag
                 <input type="text" name="port_flag" value="-port">
               </label>
             </div>
+            <p id="suggest-port-status" class="muted small"></p>
             <p class="muted small">
               If <code>{port}</code> isn't used in run args, the updater appends <code>&lt;port flag&gt; &lt;port&gt;</code> to ExecStart automatically.
             </p>
