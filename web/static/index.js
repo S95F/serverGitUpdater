@@ -104,8 +104,32 @@ async function runUpdate(id, btn) {
 }
 
 async function deleteApp(id, name) {
-  if (!window.confirm(`Delete "${name}"? This only removes it from the updater; the repo, service unit and Caddy snippet remain on disk unless you uninstall them first.`)) return;
-  await api(`/api/apps/${id}`, { method: "DELETE" });
+  const msg =
+    `Delete "${name}"?\n\n` +
+    `This will also clean up everything the app touched:\n` +
+    `  • stop, disable and remove its systemd unit (if any)\n` +
+    `  • remove its Caddy snippet and reload Caddy\n` +
+    `  • delete its webhook from GitHub (if auto-registered)\n` +
+    `  • RECURSIVELY DELETE the working copy on disk\n\n` +
+    `Continue?`;
+  if (!window.confirm(msg)) return;
+  let r;
+  try {
+    r = await api(`/api/apps/${id}`, { method: "DELETE" });
+  } catch (e) {
+    alert("Delete failed: " + e.message);
+    await load();
+    return;
+  }
+  // Surface anything that didn't clean up cleanly. Successful steps
+  // are silent; failures (e.g. systemctl couldn't reach the unit, the
+  // Caddy reload failed) are listed so the user can finish by hand.
+  const cleanup = r.cleanup || {};
+  const failed = Object.entries(cleanup).filter(([, v]) => v && v.ok === false);
+  if (failed.length) {
+    const lines = failed.map(([k, v]) => `  • ${k}: ${v.error || "see server logs"}`);
+    alert(`"${name}" was deleted, but some cleanup steps had issues:\n\n${lines.join("\n")}`);
+  }
   await load();
 }
 

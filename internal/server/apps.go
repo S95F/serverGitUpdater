@@ -368,11 +368,31 @@ func (s *Server) handleDeleteApp(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "invalid app id")
 		return
 	}
-	if err := s.cfg.DeleteApp(s.configPath, id); err != nil {
-		writeJSONError(w, http.StatusNotFound, err.Error())
+	snap := s.cfg.Snapshot()
+	app, ok := snap.FindApp(id)
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, "app not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+
+	// Run cleanup first while the config still knows about the app, so
+	// we have its repo path / service name / webhook id / caddy fields.
+	// Each step is best-effort and reported individually; we proceed to
+	// the actual config delete regardless of cleanup outcome.
+	cleanup := s.cascadingDelete(r.Context(), app, snap, deleteOptsFromQuery(r))
+
+	if err := s.cfg.DeleteApp(s.configPath, id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"ok":      false,
+			"error":   err.Error(),
+			"cleanup": cleanup,
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":      true,
+		"cleanup": cleanup,
+	})
 }
 
 func appWithID(a config.App) map[string]any {
