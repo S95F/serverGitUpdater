@@ -498,7 +498,30 @@ Caddyfile to import from there.
 
 ## Running as a service
 
-A minimal systemd unit (adjust paths and `User=`):
+The repo ships an installer script that does the whole setup for you on
+a Linux host with systemd:
+
+```sh
+sudo ./scripts/install.sh           # install + start
+sudo ./scripts/install.sh status    # systemctl status + journal tail
+sudo ./scripts/install.sh uninstall  # stop & remove the unit (keeps config/data)
+sudo ./scripts/install.sh purge     # uninstall + remove config, logs, data, user
+```
+
+It builds the binary, creates a system user (`sgu` by default), installs
+to `/usr/local/bin/serverGitUpdater`, writes a hardened unit at
+`/etc/systemd/system/servergitupdater.service` pointing at
+`/etc/servergitupdater/config.json`, runs `--init-user` once for the
+admin password, then `daemon-reload` + `enable --now`. Re-running
+`install` rebuilds and restarts cleanly.
+
+Paths and the listen address are overridable via env vars (`SGU_USER`,
+`SGU_BIN`, `SGU_CONFIG_DIR`, `SGU_LOG_DIR`, `SGU_DATA_DIR`,
+`SGU_REPOS_DIR`, `SGU_LISTEN`); see the comment at the top of the
+script for the full list.
+
+If you'd rather hand-roll the unit, here's the minimum (adjust paths
+and `User=`):
 
 ```ini
 # /etc/systemd/system/servergitupdater.service
