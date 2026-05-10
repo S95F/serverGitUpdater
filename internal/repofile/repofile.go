@@ -42,6 +42,7 @@ type File struct {
 	// --- Importable fields -----------------------------------------
 	PostUpdateCommand    *string   `json:"post_update_command,omitempty"`
 	PostUpdateArgs       *[]string `json:"post_update_args,omitempty"`
+	GitEnv               *[]string `json:"git_env,omitempty"`
 
 	AutoBuildEnabled *bool     `json:"auto_build_enabled,omitempty"`
 	BuildCommand     *string   `json:"build_command,omitempty"`
@@ -73,6 +74,10 @@ type File struct {
 	CaddySnippetDir    *string   `json:"caddy_snippet_dir,omitempty"`
 	CaddySnippetName   *string   `json:"caddy_snippet_name,omitempty"`
 	CaddyReloadCommand *[]string `json:"caddy_reload_command,omitempty"`
+	CaddyFilesUser     *string   `json:"caddy_files_user,omitempty"`
+	CaddyFilesGroup    *string   `json:"caddy_files_group,omitempty"`
+	CaddyFilesDirMode  *string   `json:"caddy_files_dir_mode,omitempty"`
+	CaddyFilesFileMode *string   `json:"caddy_files_file_mode,omitempty"`
 }
 
 // Read loads the file at <repoPath>/<filename>. If filename is empty,
@@ -127,6 +132,9 @@ func Apply(a *config.App, f *File) {
 	}
 	if f.PostUpdateArgs != nil {
 		a.PostUpdateArgs = append([]string(nil), *f.PostUpdateArgs...)
+	}
+	if f.GitEnv != nil {
+		a.GitEnv = append([]string(nil), *f.GitEnv...)
 	}
 	if f.AutoBuildEnabled != nil {
 		a.AutoBuildEnabled = *f.AutoBuildEnabled
@@ -208,6 +216,18 @@ func Apply(a *config.App, f *File) {
 	}
 	if f.CaddyReloadCommand != nil {
 		a.CaddyReloadCommand = append([]string(nil), *f.CaddyReloadCommand...)
+	}
+	if f.CaddyFilesUser != nil {
+		a.CaddyFilesUser = *f.CaddyFilesUser
+	}
+	if f.CaddyFilesGroup != nil {
+		a.CaddyFilesGroup = *f.CaddyFilesGroup
+	}
+	if f.CaddyFilesDirMode != nil {
+		a.CaddyFilesDirMode = *f.CaddyFilesDirMode
+	}
+	if f.CaddyFilesFileMode != nil {
+		a.CaddyFilesFileMode = *f.CaddyFilesFileMode
 	}
 }
 

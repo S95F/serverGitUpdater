@@ -179,14 +179,12 @@ async function runClone() {
   }
 }
 
-async function saveConfig(ev) {
-  ev.preventDefault();
-  const status = document.getElementById("config-status");
-  status.textContent = "Saving…";
-  try {
-    await api(`/api/apps/${id}`, {
-      method: "POST",
-      body: JSON.stringify({
+// formPayload builds the POST body for /api/apps/{id} from the form's
+// current state. Used by saveConfig() and by the auto-save wrapper
+// below so per-tab action buttons always operate on what the user is
+// currently looking at.
+function formPayload() {
+  return {
         name: f.name.value.trim(),
         repo_path: f.repo_path.value.trim(),
         clone_url: f.clone_url.value.trim(),
@@ -238,14 +236,47 @@ async function saveConfig(ev) {
         webhook_secret: f.webhook_secret.value.trim(),
         webhook_branch_only: f.webhook_branch_only.checked,
         webhook_auto_register: f.webhook_auto_register.checked,
-      }),
+  };
+}
+
+async function saveConfig(ev) {
+  if (ev && ev.preventDefault) ev.preventDefault();
+  const status = document.getElementById("config-status");
+  status.textContent = "Saving…";
+  try {
+    await api(`/api/apps/${id}`, {
+      method: "POST",
+      body: JSON.stringify(formPayload()),
     });
     status.textContent = "Saved.";
     await Promise.all([refreshStatus(), refreshDetect(), refreshServiceStatus(), refreshCaddyStatus()]);
     document.getElementById("app-title").textContent = f.name.value;
+    return true;
   } catch (e) {
     status.textContent = "Error: " + e.message;
+    return false;
   }
+}
+
+// autosaveThen serializes the current form, POSTs it to /api/apps/{id}
+// so the persisted config matches the user's intent, and then runs the
+// supplied action only on save success. Used to wrap per-tab action
+// buttons (Install / Apply & reload / Build now / …) so users don't
+// have to remember to click "Save settings" before kicking off an
+// action that reads from the persisted config.
+async function autosaveThen(action) {
+  const status = document.getElementById("config-status");
+  status.textContent = "Saving form before action…";
+  try {
+    await api(`/api/apps/${id}`, {
+      method: "POST",
+      body: JSON.stringify(formPayload()),
+    });
+  } catch (e) {
+    status.textContent = "Save failed; action skipped: " + e.message;
+    return;
+  }
+  await action();
 }
 
 async function runUpdate() {
@@ -382,25 +413,33 @@ document.getElementById("refresh-btn").addEventListener("click", refreshStatus);
 f.repo_path.addEventListener("input", updateRepoResolution);
 f.addEventListener("submit", saveConfig);
 document.getElementById("detect-btn").addEventListener("click", refreshDetect);
-document.getElementById("build-now").addEventListener("click", buildNow);
-document.getElementById("svc-install").addEventListener("click", () => svcAction(`/api/apps/${id}/service/install`, "Install"));
-document.getElementById("svc-restart").addEventListener("click", () => svcAction(`/api/apps/${id}/service/restart`, "Restart"));
+// All per-tab action buttons are wrapped in autosaveThen() so they
+// always operate on what the user is currently looking at — clicking
+// Install / Apply / Build now / etc. no longer requires remembering
+// to hit Save settings first.
+document.getElementById("build-now").addEventListener("click", () => autosaveThen(buildNow));
+document.getElementById("svc-install").addEventListener("click", () =>
+  autosaveThen(() => svcAction(`/api/apps/${id}/service/install`, "Install")));
+document.getElementById("svc-restart").addEventListener("click", () =>
+  autosaveThen(() => svcAction(`/api/apps/${id}/service/restart`, "Restart")));
 document.getElementById("svc-uninstall").addEventListener("click", async () => {
   if (!window.confirm("Stop, disable and remove the unit file?")) return;
-  await svcAction(`/api/apps/${id}/service/uninstall`, "Uninstall");
+  await autosaveThen(() => svcAction(`/api/apps/${id}/service/uninstall`, "Uninstall"));
 });
-document.getElementById("svc-preview").addEventListener("click", svcPreview);
-document.getElementById("caddy-apply").addEventListener("click", () => caddyAction(`/api/apps/${id}/caddy/apply`, "Apply"));
-document.getElementById("caddy-reload").addEventListener("click", () => caddyAction(`/api/apps/${id}/caddy/reload`, "Reload"));
+document.getElementById("svc-preview").addEventListener("click", () => autosaveThen(svcPreview));
+document.getElementById("caddy-apply").addEventListener("click", () =>
+  autosaveThen(() => caddyAction(`/api/apps/${id}/caddy/apply`, "Apply")));
+document.getElementById("caddy-reload").addEventListener("click", () =>
+  autosaveThen(() => caddyAction(`/api/apps/${id}/caddy/reload`, "Reload")));
 document.getElementById("caddy-remove").addEventListener("click", async () => {
   if (!window.confirm("Remove the Caddy snippet and reload?")) return;
-  await caddyAction(`/api/apps/${id}/caddy/remove`, "Remove");
+  await autosaveThen(() => caddyAction(`/api/apps/${id}/caddy/remove`, "Remove"));
 });
-document.getElementById("caddy-preview").addEventListener("click", caddyPreview);
+document.getElementById("caddy-preview").addEventListener("click", () => autosaveThen(caddyPreview));
 document.getElementById("caddy-fix-perms").addEventListener("click", async () => {
   const dir = (f.caddy_root.value.trim() || "the resolved repo path");
   if (!window.confirm(`Walk ${dir} and apply chmod (and chown if a user/group is set)?`)) return;
-  await caddyAction(`/api/apps/${id}/caddy/fix-permissions`, "Fix permissions");
+  await autosaveThen(() => caddyAction(`/api/apps/${id}/caddy/fix-permissions`, "Fix permissions"));
 });
 
 // ---------- repo-file import ----------
@@ -500,17 +539,17 @@ document.getElementById("webhook-copy").addEventListener("click", async () => {
     status.textContent = "Couldn't access clipboard: " + e.message;
   }
 });
-document.getElementById("webhook-sync").addEventListener("click", async () => {
+document.getElementById("webhook-sync").addEventListener("click", () => autosaveThen(async () => {
   const status = document.getElementById("webhook-status");
   status.textContent = "Syncing with GitHub…";
   try {
     const r = await api(`/api/apps/${id}/webhook/sync`, { method: "POST" });
     status.textContent = r.ok ? `OK — ${r.message || "synced"}` : `Failed: ${r.error || "see server logs"}`;
-    await loadApp(); // pick up the new webhook_remote_id
+    await loadApp();
   } catch (e) {
     status.textContent = "Error: " + e.message;
   }
-});
+}));
 
 await Promise.all([loadApp(), loadServerHint()]);
 updateRepoResolution();
