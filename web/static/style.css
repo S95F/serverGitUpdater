@@ -195,8 +195,8 @@ a.ghost {
 }
 
 .row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-.input-with-action { display: flex; gap: 0.4rem; align-items: stretch; }
-.input-with-action input { flex: 1 1 auto; min-width: 0; }
+.input-with-action { display: flex; gap: 0.4rem; align-items: stretch; min-width: 0; }
+.input-with-action input { flex: 1 1 auto; min-width: 4ch; width: auto; }
 .input-with-action button { flex: 0 0 auto; }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
 .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end; }
@@ -374,16 +374,34 @@ code {
 
 @media (max-width: 900px) {
   .two-col { grid-template-columns: 1fr; }
+  /* When the split collapses to a single column the sticky sidebar
+     would float over the main settings panel as you scroll, eating
+     taps that look like they should land on form inputs. Drop it
+     back to static flow. */
+  .split { grid-template-columns: 1fr; }
+  .split .sidebar { position: static; top: auto; }
 }
 
 @media (max-width: 720px) {
   body { font-size: 14px; }
 
-  /* Inputs at >= 16px font-size stop iOS Safari from zooming on focus. */
+  /* Inputs at >= 16px font-size stop iOS Safari from zooming on focus.
+     width:100% so they always fill their label/fieldset row instead
+     of falling back to the browser's intrinsic ~150px default — that
+     intrinsic width plus a flex parent was producing tiny inputs that
+     looked unchangeable. */
   input[type="text"], input[type="password"], input[type="number"],
   input[type="email"], textarea, select {
     font-size: 16px;
+    width: 100%;
+    box-sizing: border-box;
   }
+
+  /* Fieldsets are flex containers in this stylesheet. Their default
+     min-width: min-content can prevent children from shrinking on
+     narrow screens, pushing form rows partially off-viewport. */
+  fieldset { min-width: 0; }
+  form { min-width: 0; }
 
   /* Topbar: wrap, smaller padding, drop the username pill on the tightest screens. */
   .topbar { padding: 0.55rem 0.75rem; flex-wrap: wrap; gap: 0.4rem 0.75rem; }
