@@ -51,7 +51,7 @@
       "caddy_try_files": "",
       "caddy_extra": "encode zstd gzip",
       "caddy_snippet_dir": "/etc/caddy/sites.d",
-      "caddy_reload_command": ["systemctl", "reload", "caddy"],
+      "caddy_reload_command": ["caddy", "reload", "--config", "/etc/caddy/Caddyfile"],
       "caddy_files_user": "caddy",
       "caddy_files_group": "caddy",
       "caddy_files_dir_mode": "0755",

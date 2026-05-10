@@ -174,7 +174,7 @@ It has three layers:
 | `caddy_extra` | empty | Extra Caddyfile directives inside the site block. |
 | `caddy_snippet_dir` | `/etc/caddy/sites.d` | Directory the snippet is written to. |
 | `caddy_snippet_name` | empty | Snippet filename (without extension); defaults to `service_name`. |
-| `caddy_reload_command` | `["systemctl","reload","caddy"]` | Command run to reload Caddy. |
+| `caddy_reload_command` | `["caddy","reload","--config","/etc/caddy/Caddyfile"]` | Command run to reload Caddy. The default uses Caddy's local admin API (port 2019) so it works without sudo; switch to `["sudo","systemctl","reload","caddy"]` (with a matching sudoers rule) if you'd rather drive systemd. |
 | `caddy_files_user` | empty | File-server mode: user to chown served files to (optional). Requires root or `CAP_CHOWN`. |
 | `caddy_files_group` | empty | File-server mode: group to chown served files to (optional). |
 | `caddy_files_dir_mode` | `0755` | File-server mode: directory mode (octal) applied by **Fix permissions**. |
@@ -478,9 +478,17 @@ import sites.d/*.caddy
 Then either click **Apply &amp; reload** in the UI or turn on
 `caddy_auto_apply` so every successful update re-renders and reloads.
 
-The default reload command is `systemctl reload caddy`. You can change it
-to e.g. `caddy reload --config /etc/caddy/Caddyfile` if you don't run Caddy
-under systemd.
+The default reload command is `caddy reload --config /etc/caddy/Caddyfile`,
+which talks to Caddy's local admin API on `localhost:2019` and works
+without sudo as long as the daemon's user can read the Caddyfile (the
+default `0644` is fine). If you'd rather drive systemd, switch it to
+`sudo systemctl reload caddy` and add a matching sudoers rule:
+
+```sh
+echo 'sgu ALL=(root) NOPASSWD: /bin/systemctl reload caddy, /bin/systemctl restart caddy' \
+  | sudo tee /etc/sudoers.d/sgu-caddy
+sudo chmod 0440 /etc/sudoers.d/sgu-caddy
+```
 
 You can drop arbitrary directives inside the site block via `caddy_extra`
 (supports `{port}`, `{name}`, `{repo_path}`):
@@ -491,7 +499,7 @@ header /api/* Cache-Control no-store
 ```
 
 Permissions are the same story as the systemd unit: writing to
-`/etc/caddy/sites.d` and running `systemctl reload caddy` need the
+`/etc/caddy/sites.d` and running the reload command need the
 appropriate privileges. For a single-user setup you can point
 `caddy_snippet_dir` at a path your deploy user owns and adjust your
 Caddyfile to import from there.

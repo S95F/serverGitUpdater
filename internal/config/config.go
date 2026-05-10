@@ -156,7 +156,7 @@ func AppDefaults() App {
 		CaddyMode:          "proxy",
 		CaddyUpstream:      "127.0.0.1:{port}",
 		CaddySnippetDir:    "/etc/caddy/sites.d",
-		CaddyReloadCommand: []string{"systemctl", "reload", "caddy"},
+		CaddyReloadCommand: []string{"caddy", "reload", "--config", "/etc/caddy/Caddyfile"},
 		CaddyFilesDirMode:  "0755",
 		CaddyFilesFileMode: "0644",
 	}
@@ -334,7 +334,7 @@ func applyAppDefaults(a *App) {
 		a.CaddySnippetDir = "/etc/caddy/sites.d"
 	}
 	if len(a.CaddyReloadCommand) == 0 {
-		a.CaddyReloadCommand = []string{"systemctl", "reload", "caddy"}
+		a.CaddyReloadCommand = []string{"caddy", "reload", "--config", "/etc/caddy/Caddyfile"}
 	}
 	if a.CaddyMode == "" {
 		a.CaddyMode = "proxy"

@@ -111,7 +111,7 @@ async function loadApp() {
   f.caddy_extra.value = a.caddy_extra || "";
   f.caddy_snippet_dir.value = a.caddy_snippet_dir || "/etc/caddy/sites.d";
   f.caddy_snippet_name.value = a.caddy_snippet_name || "";
-  f.caddy_reload_command.value = (a.caddy_reload_command || ["systemctl", "reload", "caddy"]).join("\n");
+  f.caddy_reload_command.value = (a.caddy_reload_command || ["caddy", "reload", "--config", "/etc/caddy/Caddyfile"]).join("\n");
   f.caddy_files_user.value = a.caddy_files_user || "";
   f.caddy_files_group.value = a.caddy_files_group || "";
   f.caddy_files_dir_mode.value = a.caddy_files_dir_mode || "0755";
