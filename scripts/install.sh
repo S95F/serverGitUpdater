@@ -247,7 +247,7 @@ EOF
 [Unit]
 Description=serverGitUpdater (multi-app git pull / build / service / Caddy controller)
 Documentation=https://github.com/s95f/servergitupdater
-After=network-online.target
+After=network-online.target user@$USER_UID.service
 Wants=network-online.target
 
 [Service]
@@ -290,6 +290,21 @@ EOF
 
   log "reloading systemd"
   systemctl daemon-reload
+
+  # Wait for /run/user/$USER_UID to exist before we restart. enable-linger
+  # kicks off user@$USER_UID.service asynchronously, and our unit's
+  # BindPaths=-/run/user/$USER_UID silently skips the mount if the
+  # source doesn't exist YET. That'd leave us stuck without the user
+  # bus until the next manual restart. The After=user@$USER_UID.service
+  # in the unit also helps, but only after the user manager unit is
+  # known to systemd — this loop is the belt to that brace.
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ -d "/run/user/$USER_UID" ] && break
+    sleep 0.5
+  done
+  if [ ! -d "/run/user/$USER_UID" ]; then
+    warn "/run/user/$USER_UID never showed up; user-scope service management may not work until you 'sudo systemctl start user@$USER_UID.service' and 'sudo systemctl restart $UNIT_NAME'"
+  fi
 
   log "enabling and (re)starting $UNIT_NAME.service"
   systemctl enable "$UNIT_NAME.service" >/dev/null
