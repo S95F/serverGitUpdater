@@ -240,6 +240,10 @@ Wants=network-online.target
 Type=simple
 User=$USER_NAME
 Group=$GROUP_NAME
+# Daemons inherit a sparse PATH from systemd; add /usr/local/go/bin and
+# a couple of common toolchain dirs so build commands like \`go\`,
+# \`cargo\`, \`npm\` and \`make\` resolve from a bare name.
+Environment=PATH=/usr/local/go/bin:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
 ExecStart=$INSTALL_BIN --config $CONFIG_FILE
 # always: also revives clean self-shutdowns triggered from
 # POST /api/server/restart in the UI; systemctl stop / disable still

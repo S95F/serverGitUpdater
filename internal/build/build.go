@@ -152,6 +152,19 @@ func Run(ctx context.Context, repoPath, command string, args, env []string, auto
 	}
 	args = vars.ApplyAll(args)
 
+	// Resolve the command. Daemons running under systemd have a stripped
+	// PATH (typically /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:
+	// /sbin:/bin) which doesn't include /usr/local/go/bin or other
+	// common toolchain install dirs. If the user typed a bare command
+	// (no slash) and PATH lookup fails, try a small list of common
+	// places before giving up — same idea as scripts/install.sh's
+	// find_go(). Lets `go` / `cargo` / `npm` / `make` Just Work.
+	if !strings.Contains(command, "/") {
+		if resolved := resolveToolPath(command); resolved != "" {
+			command = resolved
+		}
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, command, args...)
@@ -160,6 +173,36 @@ func Run(ctx context.Context, repoPath, command string, args, env []string, auto
 	out, err := cmd.CombinedOutput()
 	header := fmt.Sprintf("$ %s %s\n", command, strings.Join(args, " "))
 	return header + string(out), err
+}
+
+// resolveToolPath looks for a bare command (e.g. "go", "cargo", "npm",
+// "make") in PATH first, then in a list of locations that systemd's
+// default PATH usually misses. Returns "" if nothing matched, in which
+// case the caller passes the bare name through and lets exec produce
+// its standard "executable file not found" error.
+func resolveToolPath(name string) string {
+	if p, err := exec.LookPath(name); err == nil {
+		return p
+	}
+	// Per-tool well-known prefixes.
+	candidates := []string{
+		"/usr/local/" + name + "/bin/" + name, // /usr/local/go/bin/go
+		"/usr/lib/" + name + "/bin/" + name,
+		"/opt/" + name + "/bin/" + name,
+		"/snap/bin/" + name,
+		"/usr/local/bin/" + name,
+	}
+	// Distro-versioned go packages: /usr/lib/go-1.22/bin/go etc.
+	if name == "go" {
+		matches, _ := filepath.Glob("/usr/lib/go-*/bin/go")
+		candidates = append(candidates, matches...)
+	}
+	for _, c := range candidates {
+		if info, err := os.Stat(c); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+			return c
+		}
+	}
+	return ""
 }
 
 func defaultOutput(repoPath string) string {
