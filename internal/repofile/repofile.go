@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/s95f/servergitupdater/internal/config"
 )
@@ -61,11 +62,11 @@ type File struct {
 }
 
 // Read loads the file at <repoPath>/<filename>. If filename is empty,
-// ".servergitupdater.json" is used.
+// ".servergitupdater.json" is used. The filename is constrained to a
+// path inside repoPath: leading slashes and "." / ".." segments are
+// stripped so the read can never escape the repo.
 func Read(repoPath, filename string) (*File, string, error) {
-	if filename == "" {
-		filename = ".servergitupdater.json"
-	}
+	filename = SanitizeFilename(filename)
 	full := filepath.Join(repoPath, filename)
 	data, err := os.ReadFile(full)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -81,6 +82,24 @@ func Read(repoPath, filename string) (*File, string, error) {
 		return nil, full, fmt.Errorf("parse %s: %w", filename, err)
 	}
 	return &f, full, nil
+}
+
+// SanitizeFilename collapses repeated slashes, drops leading slashes,
+// removes "." and ".." segments, and falls back to the default name if
+// nothing's left. Used so a malicious or careless repo_file_path can't
+// be turned into a directory-traversal read of /etc/passwd.
+func SanitizeFilename(filename string) string {
+	parts := []string{}
+	for _, p := range strings.Split(filename, "/") {
+		if p == "" || p == "." || p == ".." {
+			continue
+		}
+		parts = append(parts, p)
+	}
+	if len(parts) == 0 {
+		return ".servergitupdater.json"
+	}
+	return strings.Join(parts, "/")
 }
 
 // Apply merges file values into the given App, overwriting only the

@@ -24,7 +24,14 @@ func (s *Server) handlePreviewConfig(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	f, full, err := repofile.Read(a.RepoPath, a.RepoFilePath)
+	// Honour an unsaved value from the form via ?file=<path>. The UI
+	// sends this on the Preview / Import buttons so users don't have
+	// to hit Save settings just to point preview at a different name.
+	filename := a.RepoFilePath
+	if v := strings.TrimSpace(r.URL.Query().Get("file")); v != "" {
+		filename = v
+	}
+	f, full, err := repofile.Read(a.RepoPath, filename)
 	if errors.Is(err, repofile.ErrNotFound) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"exists": false,
@@ -53,7 +60,16 @@ func (s *Server) handleImportConfig(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	f, full, err := repofile.Read(a.RepoPath, a.RepoFilePath)
+	// Same ?file= override as the preview endpoint. We also persist the
+	// chosen filename onto the app so subsequent updates / auto-imports
+	// honor it without the user needing to also click Save settings.
+	filename := a.RepoFilePath
+	overridden := false
+	if v := strings.TrimSpace(r.URL.Query().Get("file")); v != "" {
+		filename = v
+		overridden = true
+	}
+	f, full, err := repofile.Read(a.RepoPath, filename)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":    false,
@@ -64,6 +80,9 @@ func (s *Server) handleImportConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	updated, uerr := s.cfg.UpdateApp(s.configPath, a.ID, func(app *config.App) {
 		repofile.Apply(app, f)
+		if overridden {
+			app.RepoFilePath = repofile.SanitizeFilename(filename)
+		}
 	})
 	if uerr != nil {
 		writeJSON(w, http.StatusOK, map[string]any{

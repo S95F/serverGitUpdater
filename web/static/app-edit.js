@@ -404,12 +404,18 @@ document.getElementById("caddy-fix-perms").addEventListener("click", async () =>
 });
 
 // ---------- repo-file import ----------
+// Pass the field's current value as ?file= so the user doesn't have to
+// click Save settings before previewing/importing a renamed config file.
+function repoFileQuery() {
+  const v = (f.repo_file_path.value || "").trim();
+  return v ? `?file=${encodeURIComponent(v)}` : "";
+}
 document.getElementById("repofile-preview").addEventListener("click", async () => {
   const status = document.getElementById("repofile-status");
   const out = document.getElementById("repofile-output");
   status.textContent = "Reading…";
   try {
-    const r = await api(`/api/apps/${id}/repo-file`);
+    const r = await api(`/api/apps/${id}/repo-file${repoFileQuery()}`);
     if (!r.exists) {
       status.textContent = `Not found: ${r.path} (${r.error || "no file"})`;
       out.textContent = "—";
@@ -426,7 +432,7 @@ document.getElementById("repofile-import").addEventListener("click", async () =>
   const out = document.getElementById("repofile-output");
   status.textContent = "Importing…";
   try {
-    const r = await api(`/api/apps/${id}/repo-file/import`, { method: "POST" });
+    const r = await api(`/api/apps/${id}/repo-file/import${repoFileQuery()}`, { method: "POST" });
     if (!r.ok) {
       status.textContent = `Import failed: ${r.error || "see output"}`;
       out.textContent = r.error || "";
