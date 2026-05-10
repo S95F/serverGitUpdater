@@ -25,7 +25,21 @@ var ErrNotFound = errors.New("repo config file not found")
 // File mirrors the importable subset of config.App. Only build, service
 // and caddy concerns are accepted — repo_path, branch, remote and
 // scheduler/webhook settings remain server-side.
+//
+// Identity fields like name / repo_path / clone_url / branch / remote
+// are intentionally NOT applied (overriding the server-managed values
+// from inside the repo would be surprising at best). They are accepted
+// in the JSON purely so a project can write a self-documenting file
+// without the parser rejecting it; they're discarded by Apply().
 type File struct {
+	// --- Accepted-but-ignored identity fields ----------------------
+	Name      *string `json:"name,omitempty"`
+	RepoPath  *string `json:"repo_path,omitempty"`
+	CloneURL  *string `json:"clone_url,omitempty"`
+	Branch    *string `json:"branch,omitempty"`
+	Remote    *string `json:"remote,omitempty"`
+
+	// --- Importable fields -----------------------------------------
 	PostUpdateCommand    *string   `json:"post_update_command,omitempty"`
 	PostUpdateArgs       *[]string `json:"post_update_args,omitempty"`
 
