@@ -258,6 +258,11 @@ Group=$GROUP_NAME
 # a couple of common toolchain dirs so build commands like \`go\`,
 # \`cargo\`, \`npm\` and \`make\` resolve from a bare name.
 Environment=PATH=/usr/local/go/bin:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+# XDG_RUNTIME_DIR is not set by systemd for system-scope services. Set
+# it explicitly so \`systemctl --user\` invocations from the daemon find
+# the per-user systemd manager's DBus socket at /run/user/<uid>/bus.
+# (Some sd-bus versions don't fall back to /run/user/getuid() cleanly.)
+Environment=XDG_RUNTIME_DIR=/run/user/$USER_UID
 ExecStart=$INSTALL_BIN --config $CONFIG_FILE
 # always: also revives clean self-shutdowns triggered from
 # POST /api/server/restart in the UI; systemctl stop / disable still

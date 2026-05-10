@@ -268,6 +268,20 @@ func runSystemctl(ctx context.Context, scope Scope, args ...string) (string, err
 	}
 	full = append(full, args...)
 	cmd := exec.CommandContext(ctx, "systemctl", full...)
+	if scope == ScopeUser {
+		// systemd doesn't set XDG_RUNTIME_DIR for system-scope services,
+		// so any \`systemctl --user\` we shell out to has to find the
+		// per-user bus from /run/user/<getuid()>. Some sd-bus versions
+		// don't compute that fallback cleanly and return ENOMEDIUM
+		// ("No medium found"). Set the env var explicitly so the path
+		// is unambiguous. We respect a caller-provided value if it
+		// somehow ended up in the environment.
+		env := os.Environ()
+		if os.Getenv("XDG_RUNTIME_DIR") == "" {
+			env = append(env, fmt.Sprintf("XDG_RUNTIME_DIR=/run/user/%d", os.Getuid()))
+		}
+		cmd.Env = env
+	}
 	out, err := cmd.CombinedOutput()
 	output := string(out)
 
