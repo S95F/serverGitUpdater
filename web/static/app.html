@@ -242,6 +242,12 @@
               <label>Upstream
                 <input type="text" name="caddy_upstream" placeholder="127.0.0.1:{port}">
               </label>
+              <p class="muted small">
+                <code>{port}</code> resolves to the <strong>App port</strong>
+                from the Build tab; <code>{repo_path}</code> and
+                <code>{name}</code> are also supported. Default is
+                <code>127.0.0.1:{port}</code>.
+              </p>
             </div>
 
             <div class="mode-section" data-mode="file_server" hidden>
@@ -292,6 +298,11 @@
             <label>Extra Caddyfile directives
               <textarea name="caddy_extra" rows="3"></textarea>
             </label>
+            <p class="muted small">
+              Domain, upstream, root and extra directives all expand
+              <code>{port}</code> / <code>{repo_path}</code> /
+              <code>{name}</code> at apply time.
+            </p>
             <div class="two-col">
               <label>Snippet directory
                 <input type="text" name="caddy_snippet_dir">
