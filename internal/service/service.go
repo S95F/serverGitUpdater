@@ -242,9 +242,21 @@ func ReadStatus(ctx context.Context, scope Scope, name string) Status {
 			st.Installed = true
 		}
 	}
-	st.ActiveState = strings.TrimSpace(mustOutput(runSystemctl(ctx, scope, "is-active", name+".service")))
-	st.EnableState = strings.TrimSpace(mustOutput(runSystemctl(ctx, scope, "is-enabled", name+".service")))
+	st.ActiveState = firstLine(mustOutput(runSystemctl(ctx, scope, "is-active", name+".service")))
+	st.EnableState = firstLine(mustOutput(runSystemctl(ctx, scope, "is-enabled", name+".service")))
 	return st
+}
+
+// firstLine returns the first non-empty line of s, trimmed. Used so a
+// multi-line systemctl error never leaks into compact UI badges.
+func firstLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		t := strings.TrimSpace(line)
+		if t != "" {
+			return t
+		}
+	}
+	return ""
 }
 
 func runSystemctl(ctx context.Context, scope Scope, args ...string) (string, error) {
@@ -261,8 +273,13 @@ func runSystemctl(ctx context.Context, scope Scope, args ...string) (string, err
 
 	// User-scope failure mode operators hit a lot: lingering not
 	// enabled, or the daemon's namespace doesn't expose /run/user.
-	// Add a one-liner hint pointing at the fix.
-	if scope == ScopeUser && err != nil && (strings.Contains(output, "Failed to connect to bus") || strings.Contains(output, "No medium found")) {
+	// Add a one-liner hint pointing at the fix — but only for
+	// mutating actions (install/uninstall/restart). Status probes
+	// (is-active, is-enabled, show, status, list-*) are called from
+	// the dashboard and their output ends up in compact UI badges,
+	// where a multi-line hint just turns into noise.
+	if scope == ScopeUser && err != nil && len(args) > 0 && !isStatusProbe(args[0]) &&
+		(strings.Contains(output, "Failed to connect to bus") || strings.Contains(output, "No medium found")) {
 		output += "\n# hint: this means the user systemd manager isn't reachable.\n"
 		output += "# fix on the daemon's host:\n"
 		output += "#   sudo loginctl enable-linger <user-the-daemon-runs-as>\n"
@@ -272,6 +289,15 @@ func runSystemctl(ctx context.Context, scope Scope, args ...string) (string, err
 		output += "# scripts/install.sh update writes both for you.\n"
 	}
 	return output, err
+}
+
+func isStatusProbe(verb string) bool {
+	switch verb {
+	case "is-active", "is-enabled", "is-failed", "is-system-running",
+		"show", "status", "cat":
+		return true
+	}
+	return strings.HasPrefix(verb, "list-")
 }
 
 func scopeFlag(scope Scope) string {
