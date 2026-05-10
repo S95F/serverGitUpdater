@@ -257,7 +257,21 @@ func runSystemctl(ctx context.Context, scope Scope, args ...string) (string, err
 	full = append(full, args...)
 	cmd := exec.CommandContext(ctx, "systemctl", full...)
 	out, err := cmd.CombinedOutput()
-	return string(out), err
+	output := string(out)
+
+	// User-scope failure mode operators hit a lot: lingering not
+	// enabled, or the daemon's namespace doesn't expose /run/user.
+	// Add a one-liner hint pointing at the fix.
+	if scope == ScopeUser && err != nil && (strings.Contains(output, "Failed to connect to bus") || strings.Contains(output, "No medium found")) {
+		output += "\n# hint: this means the user systemd manager isn't reachable.\n"
+		output += "# fix on the daemon's host:\n"
+		output += "#   sudo loginctl enable-linger <user-the-daemon-runs-as>\n"
+		output += "#   then in the daemon's unit drop-in, set:\n"
+		output += "#     ProtectHome=tmpfs\n"
+		output += "#     BindPaths=-/run/user/<that-user's-uid>\n"
+		output += "# scripts/install.sh update writes both for you.\n"
+	}
+	return output, err
 }
 
 func scopeFlag(scope Scope) string {

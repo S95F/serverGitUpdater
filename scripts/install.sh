@@ -184,6 +184,20 @@ run_install_or_update() {
     log "user $USER_NAME already exists"
   fi
 
+  # Enable lingering so a per-user systemd manager exists for $USER_NAME
+  # at boot. Without this, `systemctl --user` invocations from the
+  # daemon (used when an app's service_scope is "user") fail with
+  # "Failed to connect to bus: No medium found".
+  if command -v loginctl >/dev/null 2>&1; then
+    if loginctl show-user "$USER_NAME" 2>/dev/null | grep -q '^Linger=yes'; then
+      log "lingering already enabled for $USER_NAME"
+    else
+      log "enabling lingering for $USER_NAME (lets systemctl --user work from the daemon)"
+      loginctl enable-linger "$USER_NAME" || warn "loginctl enable-linger failed; user-scope service management may not work"
+    fi
+  fi
+  USER_UID="$(id -u "$USER_NAME")"
+
   log "creating directories"
   install -d -o "$USER_NAME" -g "$GROUP_NAME" -m 0750 "$CONFIG_DIR"
   install -d -o "$USER_NAME" -g "$GROUP_NAME" -m 0750 "$LOG_DIR"
@@ -256,7 +270,11 @@ RestartSec=2s
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ProtectHome=true
+# tmpfs (not "true") so /run/user is empty in the namespace EXCEPT for
+# the bind below — needed so \`systemctl --user\` from the daemon can
+# reach its own per-user manager when an app is service_scope=user.
+ProtectHome=tmpfs
+BindPaths=-/run/user/$USER_UID
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectKernelLogs=true
